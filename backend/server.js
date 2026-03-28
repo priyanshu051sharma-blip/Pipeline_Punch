@@ -81,8 +81,7 @@ let sensorData = {
   },
   leaks: [
     { id: 'L001', zone: 'Sector 7-B', node: 'N-047', severity: 'critical', flow: 4.2, confidence: 97.3, time: '2 min ago', buzzerActive: true },
-    { id: 'L002', zone: 'Sector 3-A', node: 'N-023', severity: 'medium', flow: 1.8, confidence: 84.5, time: '15 min ago', buzzerActive: false },
-    { id: 'L003', zone: 'Sector 5-C', node: 'N-031', severity: 'low', flow: 0.5, confidence: 72.1, time: '1 hr ago', buzzerActive: false }
+    { id: 'L002', zone: 'Sector 3-A', node: 'N-023', severity: 'medium', flow: 1.8, confidence: 84.5, time: '15 min ago', buzzerActive: false }
   ],
   pumps: [
     { id: 'P-001', name: 'Main Supply', status: 'operational', efficiency: 94.3, flow: 450, power: 2.4, runtime: '18h 24m' },
@@ -1321,6 +1320,17 @@ function persistDashboardState(reason) {
   });
 }
 
+function normalizeDashboardState() {
+  if (!Array.isArray(sensorData.leaks)) {
+    sensorData.leaks = [];
+    return false;
+  }
+
+  const originalLength = sensorData.leaks.length;
+  sensorData.leaks = sensorData.leaks.filter((leak) => leak?.id !== 'L003').slice(0, 2);
+  return sensorData.leaks.length !== originalLength;
+}
+
 async function loadDashboardStateFromDatabase() {
   if (!dbConnected) return;
 
@@ -1333,6 +1343,12 @@ async function loadDashboardStateFromDatabase() {
         ...sensorData,
         ...savedData
       };
+
+      const normalized = normalizeDashboardState();
+      if (normalized) {
+        persistDashboardState('normalize-leaks');
+      }
+
       console.log('[MongoDB] Loaded saved dashboard state.');
       return;
     }

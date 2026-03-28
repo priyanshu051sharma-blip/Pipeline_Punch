@@ -398,8 +398,7 @@ class AquaSyncApp {
       },
       leaks: [
         { id: 'L001', zone: 'Sector 7-B', node: 'N-047', severity: 'critical', flow: 4.2, confidence: 97.3, time: '2 min ago', buzzerActive: true },
-        { id: 'L002', zone: 'Sector 3-A', node: 'N-023', severity: 'medium', flow: 1.8, confidence: 84.5, time: '18 min ago', buzzerActive: false },
-        { id: 'L003', zone: 'Sector 11-D', node: 'N-089', severity: 'low', flow: 0.4, confidence: 71.0, time: '42 min ago', buzzerActive: false }
+        { id: 'L002', zone: 'Sector 3-A', node: 'N-023', severity: 'medium', flow: 1.8, confidence: 84.5, time: '18 min ago', buzzerActive: false }
       ],
       pumps: [
         { id: 'P-001', name: 'Main Supply', status: 'operational', efficiency: 94.3, flow: 450, power: 2.4, runtime: '18h 24m' },
@@ -584,6 +583,144 @@ class AquaSyncApp {
       notif.style.animation = 'slideOut 0.3s ease-out';
       setTimeout(() => notif.remove(), 300);
     }, 3000);
+  }
+
+  // AI Predictions Filter & Sort Functions
+  filterAIInsights(filterType) {
+    const insights = this.data.aiInsights || [];
+    const container = document.getElementById('ai-insights-container');
+    if (!container) return;
+
+    let filtered = insights;
+    if (filterType === 'critical') {
+      filtered = insights.filter(i => i.icon === '🔴' || i.icon === '⚠️');
+    } else if (filterType === 'info') {
+      filtered = insights.filter(i => i.icon === '📊' || i.icon === '🌧️');
+    }
+
+    container.innerHTML = filtered.length === 0 ? '<p style="text-align:center;color:var(--text-3);">✓ No issues detected</p>' : 
+      filtered.map((item) => `
+        <div class="insight-card ${item.icon === '🔴' || item.icon === '⚠️' ? 'critical' : 'info'}" style="margin-bottom:12px;">
+          <div style="display:flex;gap:12px;align-items:flex-start;">
+            <div style="font-size:24px;min-width:32px;text-align:center;">${item.icon}</div>
+            <div style="flex:1;">
+              <div style="font-weight:700;font-size:13px;color:var(--text-primary);margin-bottom:4px;">${item.title}</div>
+              <div style="font-size:12px;color:var(--text-3);line-height:1.5;margin-bottom:6px;">${item.desc}</div>
+              <div style="display:flex;gap:8px;font-size:11px;color:var(--text-4);">
+                <span>${item.icon === '🔴' ? '🚨 Critical' : item.icon === '⚠️' ? '⚠️ Warning' : 'ℹ️ Info'}</span>
+                <span>•</span>
+                <span onclick="app.showNotification('Insight marked as resolved')" style="cursor:pointer;color:var(--cyan);">Mark resolved</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      `).join('');
+
+    // Update button styles
+    document.querySelectorAll('[data-filter]').forEach(btn => {
+      btn.style.background = btn.dataset.filter === filterType ? 'linear-gradient(135deg, #00B8D4 0%, #0F5FCC 100%)' : 'transparent';
+      btn.style.color = btn.dataset.filter === filterType ? '#fff' : 'var(--text-3)';
+      btn.style.border = btn.dataset.filter === filterType ? 'none' : '1px solid var(--border)';
+    });
+  }
+
+  sortPredictions(sortBy) {
+    const forecast = this.data.demandForecast?.dailyForecast || [];
+    let sorted = [...forecast];
+
+    if (sortBy === 'day') {
+      sorted = sorted.sort((a, b) => a.day.localeCompare(b.day));
+    } else if (sortBy === 'value') {
+      sorted = sorted.sort((a, b) => b.value - a.value);
+    }
+
+    // Rebuild the table
+    const table = document.querySelector('.prediction-table tbody');
+    if (!table) return;
+
+    table.innerHTML = sorted.map((forecast, idx) => {
+      const daily = this.data.demandForecast?.dailyForecast || [];
+      const baseValue = daily.find(f => f.day === forecast.day)?.value || forecast.value;
+      const prevForecast = sorted[idx - 1] || { value: baseValue };
+      const variance = idx > 0 ? ((forecast.value - prevForecast.value) / prevForecast.value * 100).toFixed(1) : 0;
+      const trend = variance > 0 ? '📈 Up' : variance < 0 ? '📉 Down' : '➡️ Stable';
+
+      return `
+        <tr class="forecast-row ${forecast.status === 'High' ? 'high-demand' : forecast.status === 'Elevated' ? 'medium-demand' : 'normal-demand'}">
+          <td><strong>${forecast.day}</strong></td>
+          <td><span style="font-weight:700;color:var(--text-primary);">${forecast.value} MLD</span></td>
+          <td><span class="status-badge status-${forecast.status.toLowerCase()}">${forecast.status}</span></td>
+          <td>${variance}%</td>
+          <td><button class="btn-sm btn-ghost" onclick="app.showNotification('Action scheduled for ${forecast.day}')" style="font-size:11px;">Schedule ➔</button></td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  sortRecommendations(sortBy) {
+    const recommendations = this.data.demandForecast?.recommendations || [];
+    let sorted = [...recommendations];
+
+    if (sortBy === 'priority') {
+      sorted = sorted.sort((a, b) => {
+        const priorityOrder = { 'warning': 0, 'info': 1 };
+        return (priorityOrder[a.type] || 2) - (priorityOrder[b.type] || 2);
+      });
+    }
+
+    const container = document.getElementById('recommendations-container');
+    if (!container) return;
+
+    container.innerHTML = sorted.map((rec, idx) => {
+      const isWarning = rec.type === 'warning';
+      return `
+        <div class="recommendation-card ${isWarning ? 'warning' : 'info'}" style="margin-bottom:12px;display:flex;gap:12px;padding:12px;border-radius:12px;border:1.5px solid ${isWarning ? 'rgba(245,158,11,0.3)' : 'rgba(15,95,204,0.3)'};background:${isWarning ? 'rgba(245,158,11,0.05)' : 'rgba(15,95,204,0.05)'};">
+          <div style="font-size:20px;min-width:28px;text-align:center;">${isWarning ? '⚠️' : '💡'}</div>
+          <div style="flex:1;">
+            <div style="font-weight:700;font-size:13px;margin-bottom:4px;color:var(--text-primary);">${rec.title}</div>
+            <div style="font-size:12px;color:var(--text-3);margin-bottom:8px;">${rec.desc}</div>
+            <div style="display:flex;gap:6px;">
+              <button class="btn-sm btn-ghost" onclick="app.acceptRecommendation(${idx})" style="font-size:11px;padding:4px 10px;background:${isWarning ? 'var(--amber)' : 'var(--blue)'};color:#fff;border:none;font-weight:600;">✓ Accept</button>
+              <button class="btn-sm btn-ghost" onclick="app.showNotification('Recommendation stored')" style="font-size:11px;padding:4px 10px;">⏱️ Later</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  acceptRecommendation(idx) {
+    const rec = this.data.demandForecast?.recommendations?.[idx];
+    if (rec) {
+      this.showNotification(`✓ "${rec.title}" accepted and scheduled`, 'success');
+    }
+  }
+
+  exportPredictions() {
+    const forecast = this.data.demandForecast || {};
+    const csv = [
+      ['AI Predictions Export', new Date().toLocaleString()],
+      [],
+      ['Model Accuracy', `${forecast.modelAccuracy}%`],
+      [],
+      ['Daily Forecast'],
+      ['Day', 'Forecast (MLD)', 'Status'],
+      ...(forecast.dailyForecast || []).map(f => [f.day, f.value, f.status]),
+      [],
+      ['Sector Breakdown'],
+      ['Sector', 'Today (MLD)', 'Forecast (MLD)'],
+      ...(forecast.sectorBreakdown || []).map(s => [s.sector, s.today, s.forecast])
+    ].map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `predictions-${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    this.showNotification('Predictions exported successfully', 'success');
   }
 
   async runForecastModel() {
@@ -1173,9 +1310,6 @@ class AquaSyncApp {
         break;
     }
 
-    // Update leak count badge
-    document.getElementById('leak-count').textContent = this.data.leaks.length;
-
     // Show critical alerts
     this.renderAlerts();
 
@@ -1311,7 +1445,7 @@ class AquaSyncApp {
   }
 
   renderOverview() {
-    const { waterQuality, demand, leaks, stp, pumps, network } = this.data;
+    const { waterQuality, demand, leaks, stp, pumps, network, irrigation } = this.data;
     const thingspeak = this.data?.integrations?.thingspeak;
     const isThingSpeakLive = thingspeak?.live;
     const thingSpeakEnabled = thingspeak?.enabled;
@@ -1326,16 +1460,16 @@ class AquaSyncApp {
     const pumpAlerts = pumps.filter(p => p.status !== 'operational').length;
 
     return `
-      <div style="margin-bottom: 16px;display:flex;align-items:center;justify-content:space-between;">
-        <div>
-          <h1 style="margin:0;font-size:24px;color:var(--text-primary)">System Overview</h1>
-          <div style="font-size:12px;color:var(--text-4);">Urban Water Intelligence · Pipeline Punch</div>
+      <div class="overview-header">
+        <div class="overview-title-wrap">
+          <h1 class="overview-title">System Overview</h1>
+          <div class="overview-subtitle">Urban Water Intelligence · Pipeline Punch</div>
         </div>
-        <div style="display:flex;align-items:center;gap:10px;">
+        <div class="overview-status-row">
           <span class="badge badge-green">LIVE MONITORING</span>
           <span class="badge ${sourceBadge}">${sourceLabel}</span>
           <span class="badge badge-blue">Last Sync ${lastSyncLabel}</span>
-          <span style="font-family: 'IBM Plex Mono', monospace; font-size:13px; color:var(--text-3);">${new Date().toLocaleTimeString()}</span>
+          <span class="overview-clock">${new Date().toLocaleTimeString()}</span>
         </div>
       </div>
 
@@ -1375,19 +1509,24 @@ class AquaSyncApp {
       ` : ''}
 
       ${criticalLeak ? `
-      <div class="alert" style="border-color:var(--red);background:rgba(254,226,226,.85);margin-bottom:16px;">
-        <div class="alert-content">
-          <div class="alert-title">CRITICAL LEAK - ${criticalLeak.flow} L/min</div>
-          <div class="alert-sub">${criticalLeak.zone} • Node ${criticalLeak.node} • ${criticalLeak.time} • Confidence ${criticalLeak.confidence}%</div>
+      <div class="alert overview-critical-alert">
+        <div class="overview-critical-content">
+          <div class="overview-critical-title">Critical Leak · ${criticalLeak.flow} L/min</div>
+          <div class="overview-critical-meta">
+            <span>${criticalLeak.zone}</span>
+            <span>Node ${criticalLeak.node}</span>
+            <span>${criticalLeak.time}</span>
+            <span>Confidence ${criticalLeak.confidence}%</span>
+          </div>
         </div>
-        <div style="display:flex;gap:8px;">
+        <div class="overview-critical-actions">
           <button class="btn btn-red" onclick="app.dispatchLeakTeam({id: '${criticalLeak.id}', zone: '${criticalLeak.zone}', node: '${criticalLeak.node}', flow: ${criticalLeak.flow}, confidence: ${criticalLeak.confidence}})">Dispatch Team</button>
           <button class="btn btn-ghost" onclick="alert('Leak details: ' + '${criticalLeak.zone}')">View Details</button>
         </div>
       </div>
       ` : ''}
 
-      <div class="kpi-row" style="grid-template-columns:repeat(5, minmax(160px,1fr));gap:14px;margin-bottom:16px;">
+      <div class="kpi-row overview-kpi-row">
         <div class="kpi">
           <div class="kpi-header"><div class="kpi-label">Water Quality Index</div><span class="kpi-trend trend-up">+2.1%</span></div>
           <div class="kpi-value">${waterQuality.wqi}</div>
@@ -1424,26 +1563,31 @@ class AquaSyncApp {
         <div class="panel">
           <div class="panel-header"><div class="panel-title">Water Quality</div><span class="badge badge-blue">GOOD</span></div>
           <div class="panel-body" style="padding:16px;">
-            <div style="display:flex;gap:14px;flex-wrap:wrap;">
-              <div style="flex:1;min-width:180px;">
-                <div style="font-size:12px;color:var(--text-4);">Indicator</div>
-                <div style="font-size:24px;font-weight:700;color:var(--text-primary);">${waterQuality.ph}</div>
-                <div style="font-size:11px;color:var(--text-3);">pH Level</div>
+            <div class="params-grid overview-quality-grid">
+              <div class="param-card">
+                <div class="param-name">Indicator</div>
+                <div class="param-val">${waterQuality.ph}</div>
+                <div class="param-status status-ok">pH Level</div>
               </div>
-              <div style="flex:1;min-width:180px;">
-                <div style="font-size:12px;color:var(--text-4);">Indicator</div>
-                <div style="font-size:24px;font-weight:700;color:var(--text-primary);">${waterQuality.turbidity} NTU</div>
-                <div style="font-size:11px;color:var(--text-3);">Turbidity</div>
+              <div class="param-card">
+                <div class="param-name">Indicator</div>
+                <div class="param-val">${waterQuality.turbidity} NTU</div>
+                <div class="param-status status-ok">Turbidity</div>
               </div>
-              <div style="flex:1;min-width:180px;">
-                <div style="font-size:12px;color:var(--text-4);">Indicator</div>
-                <div style="font-size:24px;font-weight:700;color:var(--text-primary);">${waterQuality.chlorine} mg/L</div>
-                <div style="font-size:11px;color:var(--text-3);">Chlorine</div>
+              <div class="param-card">
+                <div class="param-name">Indicator</div>
+                <div class="param-val">${waterQuality.chlorine} mg/L</div>
+                <div class="param-status status-warn">Chlorine</div>
               </div>
-              <div style="flex:1;min-width:180px;">
-                <div style="font-size:12px;color:var(--text-4);">Indicator</div>
-                <div style="font-size:24px;font-weight:700;color:var(--text-primary);">${waterQuality.tds} ppm</div>
-                <div style="font-size:11px;color:var(--text-3);">TDS</div>
+              <div class="param-card">
+                <div class="param-name">Indicator</div>
+                <div class="param-val">${waterQuality.tds} ppm</div>
+                <div class="param-status status-ok">TDS</div>
+              </div>
+              <div class="param-card">
+                <div class="param-name">Indicator</div>
+                <div class="param-val">${Math.round(irrigation.zones.reduce((a,z) => a + z.soilMoisture, 0) / irrigation.zones.length)}%</div>
+                <div class="param-status status-ok">Soil Moisture</div>
               </div>
             </div>
           </div>
@@ -1470,7 +1614,21 @@ class AquaSyncApp {
         <div class="panel">
           <div class="panel-header"><div class="panel-title">Leak Detection</div><span class="badge badge-red">${leaks.length} ACTIVE</span></div>
           <div class="panel-body" style="padding:12px;">
-            ${leaks.map(leak => `<div style="padding:10px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;background:${leak.severity==='critical'?'#FEE2E2':'#FEF3C7'};"><div style="font-weight:700">${leak.zone} (${leak.node})</div><div style="font-size:12px;color:var(--text-3)">${leak.flow} L/min • ${leak.confidence}% • ${leak.time}</div></div>`).join('')}
+            <div class="leak-list overview-leak-list">
+              ${leaks.map(leak => `
+                <div class="leak-item ${leak.severity === 'critical' ? 'leak-critical' : leak.severity === 'medium' ? 'leak-medium' : 'leak-low'}">
+                  <div class="leak-top">
+                    <div class="leak-zone">${leak.zone} (${leak.node})</div>
+                    <span class="leak-sev ${leak.severity === 'critical' ? 'leak-sev-critical' : leak.severity === 'medium' ? 'leak-sev-medium' : 'leak-sev-low'}">${leak.severity.toUpperCase()}</span>
+                  </div>
+                  <div class="leak-meta">
+                    <span>${leak.flow} L/min</span>
+                    <span>${leak.confidence}% confidence</span>
+                    <span>${leak.time}</span>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
           </div>
         </div>
       </div>
@@ -2302,44 +2460,69 @@ class AquaSyncApp {
           <div class="panel-title">🔌 Hardware Architecture</div>
         </div>
         <div class="panel-body">
-          <div class="hw-diagram">
-            <div class="hw-layer">
-              <div class="hw-title">Sensing Layer</div>
-              <div class="hw-components">
-                <div class="hw-comp">Flow Sensor</div>
-                <div class="hw-comp">pH Sensor</div>
-                <div class="hw-comp">TDS Sensor</div>
-                <div class="hw-comp">Soil Moisture</div>
-                <div class="hw-comp">Pressure Sensor</div>
+          <div class="hw-arch hw-arch-clean">
+            <div class="hw-pipeline">
+              <div class="hw-card stage-edge">
+                <div class="hw-card-head">
+                  <div class="hw-card-title">1. Sensing</div>
+                  <span class="hw-chip">${Object.keys(hardware.sensors || {}).length} live</span>
+                </div>
+                <div class="hw-card-meta">Field probes collect physical water and pipeline parameters.</div>
+                <ul class="hw-card-list">
+                  <li>Water quality: pH, TDS, flow</li>
+                  <li>Hydraulic: pressure, flow rate</li>
+                  <li>Coverage health: avg accuracy 98.2%</li>
+                </ul>
+              </div>
+
+              <div class="hw-card stage-compute">
+                <div class="hw-card-head">
+                  <div class="hw-card-title">2. Edge Compute</div>
+                  <span class="hw-chip">dual MCU</span>
+                </div>
+                <div class="hw-card-meta">Microcontrollers preprocess and validate telemetry at source.</div>
+                <ul class="hw-card-list">
+                  <li>Arduino: polling + filtering</li>
+                  <li>ESP32: uplink (${hardware.esp32.signalStrength} dBm)</li>
+                  <li>Status: ${hardware.arduino.status.toUpperCase()} / ${hardware.esp32.status.toUpperCase()}</li>
+                </ul>
+              </div>
+
+              <div class="hw-card stage-control">
+                <div class="hw-card-head">
+                  <div class="hw-card-title">3. Control</div>
+                  <span class="hw-chip">closed loop</span>
+                </div>
+                <div class="hw-card-meta">Commands are executed with immediate safety and alert feedback.</div>
+                <ul class="hw-card-list">
+                  <li>Pump: ${hardware.actuators.mainPump.status.toUpperCase()} (${hardware.actuators.mainPump.power} kW)</li>
+                  <li>Sprinklers: ${hardware.actuators.sprinklers.active}/${hardware.actuators.sprinklers.total} active</li>
+                  <li>Valves + buzzer: routed + alerts</li>
+                </ul>
+              </div>
+
+              <div class="hw-card stage-cloud">
+                <div class="hw-card-head">
+                  <div class="hw-card-title">4. Cloud + UI</div>
+                  <span class="hw-chip">real-time</span>
+                </div>
+                <div class="hw-card-meta">Backend intelligence feeds dashboards and operator actions.</div>
+                <ul class="hw-card-list">
+                  <li>Backend API + persistence</li>
+                  <li>WebSocket telemetry stream</li>
+                  <li>AquaSync monitoring dashboard</li>
+                </ul>
               </div>
             </div>
-            <div class="hw-arrow">↓</div>
-            <div class="hw-layer">
-              <div class="hw-title">Processing Layer</div>
-              <div class="hw-components">
-                <div class="hw-comp hw-main">Arduino Uno</div>
-                <div class="hw-comp hw-main">ESP32</div>
-              </div>
+
+            <div class="hw-flow-strip">
+              <span>Sensor Input</span>
+              <span>Edge Processing</span>
+              <span>Actuation</span>
+              <span>Cloud Feedback</span>
             </div>
-            <div class="hw-arrow">↓</div>
-            <div class="hw-layer">
-              <div class="hw-title">Control Layer</div>
-              <div class="hw-components">
-                <div class="hw-comp">Water Pump</div>
-                <div class="hw-comp">Sprinklers</div>
-                <div class="hw-comp">Buzzer</div>
-                <div class="hw-comp">Valves</div>
-              </div>
-            </div>
-            <div class="hw-arrow">↓</div>
-            <div class="hw-layer">
-              <div class="hw-title">Cloud Layer</div>
-              <div class="hw-components">
-                <div class="hw-comp hw-cloud">Backend API</div>
-                <div class="hw-comp hw-cloud">WebSocket</div>
-                <div class="hw-comp hw-cloud">Dashboard</div>
-              </div>
-            </div>
+
+            <div class="hw-caption">Data loop: sensors -> edge compute -> control actions -> cloud analytics -> operator commands</div>
           </div>
         </div>
       </div>
@@ -2422,35 +2605,226 @@ class AquaSyncApp {
   renderAIPredictions() {
     const insights = this.data.aiInsights || [];
     const demandForecast = this.data.demandForecast || { dailyForecast: [], modelAccuracy: 0, shortageRisk: {} };
+    const recommendations = demandForecast.recommendations || [];
+    const dailyForecast = demandForecast.dailyForecast || [];
+    const sectorBreakdown = demandForecast.sectorBreakdown || [];
+    
+    const criticalInsights = insights.filter(i => i.icon === '🔴' || i.icon === '⚠️');
+    const infoInsights = insights.filter(i => i.icon === '📊' || i.icon === '🌧️');
 
     return `
       <div class="kpi-row">
         <div class="kpi">
-          <div class="kpi-header"><div class="kpi-label">Model Accuracy</div></div>
+          <div class="kpi-header">
+            <div class="kpi-ico" style="background: linear-gradient(135deg, #00B8D4 0%, #0F5FCC 100%); color: #fff;">
+              <svg viewBox="0 0 24 24"><path d="M12 2v20M6 8h12M6 16h12"/></svg>
+            </div>
+            <span class="kpi-trend trend-up">🎯 ${demandForecast.modelAccuracy || 0}%</span>
+          </div>
+          <div class="kpi-label">Model Accuracy</div>
           <div class="kpi-value">${demandForecast.modelAccuracy || 0}%</div>
-          <div class="kpi-sub">Forecast confidence</div>
+          <div class="kpi-sub">AI confidence level</div>
+          <div class="kpi-bar"><div class="kpi-bar-fill" style="width:${demandForecast.modelAccuracy || 0}%;background:linear-gradient(90deg,#00B8D4,#0F5FCC)"></div></div>
         </div>
         <div class="kpi">
-          <div class="kpi-header"><div class="kpi-label">Shortage Risk</div></div>
+          <div class="kpi-header">
+            <div class="kpi-ico" style="background: #FFE8DC; color: #F59E0B;">
+              <svg viewBox="0 0 24 24"><path d="M12 2C6 2 2 6 2 12s4 10 10 10 10-4 10-10S18 2 12 2z"/><path d="M12 6v6h6"/></svg>
+            </div>
+            <span class="kpi-trend trend-warn">⏰ Alert</span>
+          </div>
+          <div class="kpi-label">Next Risk Window</div>
           <div class="kpi-value">${demandForecast.shortageRisk?.day || 'N/A'}</div>
-          <div class="kpi-sub">${demandForecast.shortageRisk?.reason || 'None'}</div>
+          <div class="kpi-sub">${demandForecast.shortageRisk?.reason || 'Low risk'}</div>
         </div>
         <div class="kpi">
-          <div class="kpi-header"><div class="kpi-label">AI Suggestions</div></div>
+          <div class="kpi-header">
+            <div class="kpi-ico" style="background: var(--green-light); color: var(--green);">
+              <svg viewBox="0 0 24 24"><path d="M12 2v20M5 12h14M12 5l-6 6 6 6"/></svg>
+            </div>
+            <span class="kpi-trend trend-up">📈 ${insights.length}</span>
+          </div>
+          <div class="kpi-label">Active Insights</div>
           <div class="kpi-value">${insights.length}</div>
-          <div class="kpi-sub">Action orders</div>
+          <div class="kpi-sub">${criticalInsights.length} critical · ${infoInsights.length} info</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-header">
+            <div class="kpi-ico" style="background: var(--purple-light); color: var(--purple);">
+              <svg viewBox="0 0 24 24"><path d="M3 12c0 4.97 4.03 9 9 9s9-4.03 9-9-4.03-9-9-9-9 4.03-9 9z"/><path d="M12 8v4l3 2"/></svg>
+            </div>
+            <span class="kpi-trend trend-up">🔄 Auto</span>
+          </div>
+          <div class="kpi-label">Forecast Updated</div>
+          <div class="kpi-value">Just Now</div>
+          <div class="kpi-sub">Real-time ML sync</div>
         </div>
       </div>
 
+      <!-- AI INSIGHTS PANEL WITH FILTERING -->
       <div class="panel">
-        <div class="panel-header"><div class="panel-title">AI Predictions & Prescriptive Actions</div></div>
-        <div class="panel-body">
-          ${insights.length === 0 ? '<p>No insights available yet.</p>' : insights.map(item => `
-            <div class="insight-block" style="margin-bottom:10px;padding:10px;border-radius:8px;border:1px solid var(--border);">
-              <div style="font-weight:700;font-size:13px;margin-bottom:4px;">${item.icon} ${item.title}</div>
-              <div style="font-size:12px;color:var(--text-3);">${item.desc}</div>
+        <div class="panel-header">
+          <div class="panel-title">🤖 AI Insights & Alerts (Real-Time)</div>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn-sm btn-ghost" onclick="app.filterAIInsights('all')" data-filter="all" style="background: linear-gradient(135deg, #00B8D4 0%, #0F5FCC 100%); color: #fff; border: none;">All</button>
+            <button class="btn-sm btn-ghost" onclick="app.filterAIInsights('critical')" data-filter="critical">Critical</button>
+            <button class="btn-sm btn-ghost" onclick="app.filterAIInsights('info')" data-filter="info">Info</button>
+          </div>
+        </div>
+        <div class="panel-body" id="ai-insights-container">
+          ${insights.length === 0 ? '<p style="text-align:center;color:var(--text-3);">✓ No issues detected</p>' : insights.map((item, idx) => `
+            <div class="insight-card ${item.icon === '🔴' || item.icon === '⚠️' ? 'critical' : 'info'}" style="margin-bottom:12px;">
+              <div style="display:flex;gap:12px;align-items:flex-start;">
+                <div style="font-size:24px;min-width:32px;text-align:center;">${item.icon}</div>
+                <div style="flex:1;">
+                  <div style="font-weight:700;font-size:13px;color:var(--text-primary);margin-bottom:4px;">${item.title}</div>
+                  <div style="font-size:12px;color:var(--text-3);line-height:1.5;margin-bottom:6px;">${item.desc}</div>
+                  <div style="display:flex;gap:8px;font-size:11px;color:var(--text-4);">
+                    <span>${item.icon === '🔴' ? '🚨 Critical' : item.icon === '⚠️' ? '⚠️ Warning' : 'ℹ️ Info'}</span>
+                    <span>•</span>
+                    <span onclick="app.showNotification('Insight marked as resolved')" style="cursor:pointer;color:var(--cyan);">Mark resolved</span>
+                  </div>
+                </div>
+              </div>
             </div>
           `).join('')}
+        </div>
+      </div>
+
+      <!-- DEMAND FORECAST TABLE -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">📊 7-Day Demand Forecast</div>
+          <span class="badge badge-blue">${demandForecast.modelAccuracy || 0}% confidence</span>
+        </div>
+        <div class="panel-body">
+          <div style="overflow-x:auto;">
+            <table class="prediction-table">
+              <thead>
+                <tr>
+                  <th onclick="app.sortPredictions('day')" style="cursor:pointer;">📅 Day ▾</th>
+                  <th onclick="app.sortPredictions('value')" style="cursor:pointer;">💧 Forecast ▾</th>
+                  <th>📈 Status</th>
+                  <th>⚡ Variance</th>
+                  <th>✓ Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${dailyForecast.map((forecast, idx) => {
+                  const variance = idx > 0 ? ((forecast.value - dailyForecast[idx-1].value) / dailyForecast[idx-1].value * 100).toFixed(1) : 0;
+                  const trend = variance > 0 ? '📈 Up' : variance < 0 ? '📉 Down' : '➡️ Stable';
+                  return `
+                    <tr class="forecast-row ${forecast.status === 'High' ? 'high-demand' : forecast.status === 'Elevated' ? 'medium-demand' : 'normal-demand'}">
+                      <td><strong>${forecast.day}</strong></td>
+                      <td><span style="font-weight:700;color:var(--text-primary);">${forecast.value} MLD</span></td>
+                      <td><span class="status-badge status-${forecast.status.toLowerCase()}">${forecast.status}</span></td>
+                      <td>${variance}%</td>
+                      <td><button class="btn-sm btn-ghost" onclick="app.showNotification('Action scheduled for ${forecast.day}')" style="font-size:11px;">Schedule ➔</button></td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- SECTOR BREAKDOWN -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">🏢 Sector Demand Breakdown</div>
+          <button class="btn-sm btn-ghost" onclick="app.exportPredictions()">📥 Export</button>
+        </div>
+        <div class="panel-body">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;">
+            ${sectorBreakdown.map(sector => {
+              const variance = sector.today > 0 ? ((sector.forecast - sector.today) / sector.today * 100).toFixed(1) : 0;
+              return `
+                <div class="sector-card">
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                    <div style="font-weight:700;font-size:13px;">${sector.sector}</div>
+                    <span class="badge ${variance > 5 ? 'badge-amber' : variance < -5 ? 'badge-green' : 'badge-blue'}">${variance > 0 ? '+' : ''}${variance}%</span>
+                  </div>
+                  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+                    <div>
+                      <div style="font-size:10px;color:var(--text-4);text-transform:uppercase;margin-bottom:4px;">Today</div>
+                      <div style="font-size:16px;font-weight:700;color:var(--cyan);">${sector.today}&nbsp;<span style="font-size:11px;color:var(--text-3);">MLD</span></div>
+                    </div>
+                    <div>
+                      <div style="font-size:10px;color:var(--text-4);text-transform:uppercase;margin-bottom:4px;">Forecast</div>
+                      <div style="font-size:16px;font-weight:700;color:var(--blue);">${sector.forecast}&nbsp;<span style="font-size:11px;color:var(--text-3);">MLD</span></div>
+                    </div>
+                  </div>
+                  <div class="micro-bar">
+                    <div class="bar-today" style="width:${(sector.today / Math.max(...sectorBreakdown.map(s => Math.max(s.today, s.forecast))) * 100)}%"></div>
+                    <div class="bar-forecast" style="width:${(sector.forecast / Math.max(...sectorBreakdown.map(s => Math.max(s.today, s.forecast))) * 100)}%;"></div>
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      </div>
+
+      <!-- RECOMMENDATIONS -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">💡 ML Recommendations & Actions</div>
+          <button class="btn-sm btn-ghost" onclick="app.sortRecommendations('priority')" style="font-size:11px;">Sort by Priority</button>
+        </div>
+        <div class="panel-body">
+          <div id="recommendations-container">
+            ${recommendations.map((rec, idx) => {
+              const isWarning = rec.type === 'warning';
+              return `
+                <div class="recommendation-card ${isWarning ? 'warning' : 'info'}" style="margin-bottom:12px;display:flex;gap:12px;padding:12px;border-radius:12px;border:1.5px solid ${isWarning ? 'rgba(245,158,11,0.3)' : 'rgba(15,95,204,0.3)'};background:${isWarning ? 'rgba(245,158,11,0.05)' : 'rgba(15,95,204,0.05)'};">
+                  <div style="font-size:20px;min-width:28px;text-align:center;">${isWarning ? '⚠️' : '💡'}</div>
+                  <div style="flex:1;">
+                    <div style="font-weight:700;font-size:13px;margin-bottom:4px;color:var(--text-primary);">${rec.title}</div>
+                    <div style="font-size:12px;color:var(--text-3);margin-bottom:8px;">${rec.desc}</div>
+                    <div style="display:flex;gap:6px;">
+                      <button class="btn-sm btn-ghost" onclick="app.acceptRecommendation(${idx})" style="font-size:11px;padding:4px 10px;background:${isWarning ? 'var(--amber)' : 'var(--blue)'};color:#fff;border:none;font-weight:600;">✓ Accept</button>
+                      <button class="btn-sm btn-ghost" onclick="app.showNotification('Recommendation stored')" style="font-size:11px;padding:4px 10px;">⏱️ Later</button>
+                    </div>
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      </div>
+
+      <!-- PERFORMANCE METRICS -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">📊 Model Performance Metrics</div>
+          <span class="badge badge-green">Production</span>
+        </div>
+        <div class="panel-body">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;">
+            <div class="metric-card">
+              <div style="font-size:11px;color:var(--text-4);text-transform:uppercase;margin-bottom:6px;">Accuracy Rate</div>
+              <div style="font-size:28px;font-weight:800;color:var(--blue);">${demandForecast.modelAccuracy || 0}%</div>
+              <div class="micro-progress">
+                <div style="width:${demandForecast.modelAccuracy || 0}%;background:linear-gradient(90deg,var(--blue),var(--cyan));height:4px;border-radius:2px;"></div>
+              </div>
+            </div>
+            <div class="metric-card">
+              <div style="font-size:11px;color:var(--text-4);text-transform:uppercase;margin-bottom:6px;">Predictions Made</div>
+              <div style="font-size:28px;font-weight:800;color:var(--green);">${dailyForecast.length * 7}+</div>
+              <div style="font-size:11px;color:var(--text-3);margin-top:4px;">This month</div>
+            </div>
+            <div class="metric-card">
+              <div style="font-size:11px;color:var(--text-4);text-transform:uppercase;margin-bottom:6px;">False Alerts</div>
+              <div style="font-size:28px;font-weight:800;color:var(--amber);">2.1%</div>
+              <div style="font-size:11px;color:var(--text-3);margin-top:4px;">Precision: 97.9%</div>
+            </div>
+            <div class="metric-card">
+              <div style="font-size:11px;color:var(--text-4);text-transform:uppercase;margin-bottom:6px;">Avg Response Time</div>
+              <div style="font-size:28px;font-weight:800;color:var(--purple);">12.4s</div>
+              <div style="font-size:11px;color:var(--text-3);margin-top:4px;">ML Inference</div>
+            </div>
+          </div>
         </div>
       </div>
     `;
