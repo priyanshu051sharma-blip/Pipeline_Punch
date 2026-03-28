@@ -1,0 +1,1399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AquaSync — Urban Water Intelligence</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:          #F5F7FA;
+  --surface:     #FFFFFF;
+  --surface-2:   #F0F3F7;
+  --border:      #E2E8F0;
+  --border-2:    #CBD5E1;
+  --text-primary:#0F172A;
+  --text-2:      #334155;
+  --text-3:      #64748B;
+  --text-4:      #94A3B8;
+
+  --blue:        #1D6CF0;
+  --blue-light:  #EEF4FF;
+  --blue-mid:    #BFDBFE;
+
+  --teal:        #0891B2;
+  --teal-light:  #ECFEFF;
+
+  --green:       #059669;
+  --green-light: #ECFDF5;
+  --green-mid:   #A7F3D0;
+
+  --amber:       #D97706;
+  --amber-light: #FFFBEB;
+  --amber-mid:   #FDE68A;
+
+  --red:         #DC2626;
+  --red-light:   #FEF2F2;
+  --red-mid:     #FECACA;
+
+  --purple:      #7C3AED;
+  --purple-light:#F5F3FF;
+
+  --shadow-sm:   0 1px 2px rgba(15,23,42,0.06);
+  --shadow:      0 2px 8px rgba(15,23,42,0.08), 0 0 0 1px rgba(15,23,42,0.04);
+  --shadow-md:   0 4px 16px rgba(15,23,42,0.10), 0 0 0 1px rgba(15,23,42,0.04);
+  --radius:      10px;
+  --radius-sm:   7px;
+  --radius-lg:   14px;
+}
+
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text-primary);font-family:'Outfit',sans-serif;font-size:14px;min-height:100vh;overflow-x:hidden}
+
+/* ─── LAYOUT ────────────────────────────────── */
+.shell{display:flex;min-height:100vh}
+
+/* ─── SIDEBAR ───────────────────────────────── */
+.sidebar{width:220px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;position:fixed;height:100vh;z-index:50}
+.sb-logo{padding:20px 18px 16px;border-bottom:1px solid var(--border)}
+.sb-brand{display:flex;align-items:center;gap:10px}
+.sb-icon{width:34px;height:34px;background:var(--blue);border-radius:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.sb-icon svg{width:18px;height:18px;stroke:white;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.sb-name{font-weight:700;font-size:15px;color:var(--text-primary);letter-spacing:-0.3px}
+.sb-sub{font-size:10px;color:var(--text-4);font-family:'IBM Plex Mono',monospace;letter-spacing:.5px}
+
+.sb-section{padding:16px 10px 4px;font-size:10px;font-weight:600;color:var(--text-4);letter-spacing:1.2px;text-transform:uppercase;font-family:'IBM Plex Mono',monospace}
+.sb-nav{flex:1;overflow-y:auto;padding:4px 0}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 14px;margin:1px 8px;border-radius:var(--radius-sm);cursor:pointer;color:var(--text-3);font-size:13px;font-weight:500;transition:all .15s;position:relative;border:none;background:none;width:calc(100% - 16px);text-align:left}
+.nav-item:hover{background:var(--surface-2);color:var(--text-primary)}
+.nav-item.active{background:var(--blue-light);color:var(--blue);font-weight:600}
+.nav-item.active::before{content:'';position:absolute;left:-8px;top:50%;transform:translateY(-50%);width:3px;height:18px;background:var(--blue);border-radius:0 3px 3px 0}
+.nav-ico{width:16px;height:16px;flex-shrink:0;opacity:.7}
+.nav-item.active .nav-ico{opacity:1}
+.nav-badge{margin-left:auto;background:var(--red);color:#fff;font-size:10px;font-family:'IBM Plex Mono',monospace;padding:1px 6px;border-radius:20px;min-width:18px;text-align:center}
+
+.sb-footer{padding:14px 10px;border-top:1px solid var(--border)}
+.sb-status{display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--green-light);border-radius:var(--radius-sm);border:1px solid var(--green-mid)}
+.pulse-dot{width:7px;height:7px;border-radius:50%;background:var(--green);flex-shrink:0;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(5,150,105,.4)}50%{box-shadow:0 0 0 5px rgba(5,150,105,0)}}
+.sb-status-txt{font-size:11px;font-weight:600;color:var(--green);font-family:'IBM Plex Mono',monospace}
+
+/* ─── MAIN AREA ─────────────────────────────── */
+.main{margin-left:220px;flex:1;display:flex;flex-direction:column;min-height:100vh}
+
+/* ─── TOPBAR ─────────────────────────────────── */
+.topbar{background:var(--surface);border-bottom:1px solid var(--border);padding:0 24px;height:56px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:40}
+.tb-left{display:flex;align-items:center;gap:16px}
+.page-title{font-size:15px;font-weight:600;color:var(--text-primary)}
+.page-sub{font-size:12px;color:var(--text-4)}
+.divider-v{width:1px;height:22px;background:var(--border)}
+.tb-right{display:flex;align-items:center;gap:10px}
+
+.btn{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:var(--radius-sm);font-size:12px;font-weight:600;cursor:pointer;border:none;transition:all .15s;font-family:'Outfit',sans-serif}
+.btn-ghost{background:transparent;color:var(--text-3);border:1px solid var(--border)}
+.btn-ghost:hover{background:var(--surface-2);color:var(--text-primary)}
+.btn-primary{background:var(--blue);color:#fff}
+.btn-primary:hover{background:#1558d4}
+.btn-icon{width:32px;height:32px;padding:0;justify-content:center;border-radius:var(--radius-sm);background:var(--surface-2);border:1px solid var(--border);color:var(--text-3);cursor:pointer;transition:all .15s}
+.btn-icon:hover{background:var(--border);color:var(--text-primary)}
+.btn-icon svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+
+.time-chip{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-3);background:var(--surface-2);padding:5px 12px;border-radius:var(--radius-sm);border:1px solid var(--border)}
+
+.notif-btn{position:relative;width:32px;height:32px;border-radius:var(--radius-sm);background:var(--surface-2);border:1px solid var(--border);cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text-3)}
+.notif-btn:hover{background:var(--border)}
+.notif-btn svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.notif-dot{position:absolute;top:5px;right:5px;width:7px;height:7px;border-radius:50%;background:var(--red);border:2px solid var(--surface)}
+
+/* ─── CONTENT ────────────────────────────────── */
+.content{padding:20px 24px;flex:1}
+
+/* ─── ALERT BANNER ───────────────────────────── */
+.alert-banner{display:flex;align-items:center;justify-content:space-between;background:var(--red-light);border:1px solid var(--red-mid);border-left:3px solid var(--red);border-radius:var(--radius);padding:12px 16px;margin-bottom:20px;animation:slideDown .3s ease}
+@keyframes slideDown{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+.ab-left{display:flex;align-items:flex-start;gap:12px}
+.ab-icon{width:32px;height:32px;border-radius:7px;background:var(--red);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.ab-icon svg{width:16px;height:16px;stroke:white;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.ab-tag{display:inline-block;background:var(--red);color:#fff;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.8px;padding:2px 7px;border-radius:4px;font-weight:500;margin-bottom:4px}
+.ab-title{font-size:13px;font-weight:600;color:var(--red)}
+.ab-sub{font-size:11px;color:var(--text-3);margin-top:2px;font-family:'IBM Plex Mono',monospace}
+.ab-close{width:26px;height:26px;border-radius:6px;background:transparent;border:1px solid var(--red-mid);cursor:pointer;color:var(--red);font-size:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s}
+.ab-close:hover{background:var(--red-mid)}
+.ab-actions{display:flex;gap:8px;margin-top:8px}
+.btn-sm{padding:4px 10px;font-size:11px;font-weight:600;border-radius:5px;cursor:pointer;border:none;font-family:'Outfit',sans-serif}
+.btn-red-solid{background:var(--red);color:#fff}
+.btn-red-solid:hover{background:#b91c1c}
+.btn-red-ghost{background:transparent;color:var(--red);border:1px solid var(--red-mid)}
+.btn-red-ghost:hover{background:var(--red-light)}
+
+/* ─── KPI ROW ────────────────────────────────── */
+.kpi-row{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:20px}
+.kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:18px;cursor:pointer;transition:all .2s;box-shadow:var(--shadow-sm)}
+.kpi:hover{box-shadow:var(--shadow-md);transform:translateY(-1px)}
+.kpi-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.kpi-ico{width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.kpi-ico svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.kpi-trend{font-size:11px;font-weight:600;font-family:'IBM Plex Mono',monospace;padding:3px 7px;border-radius:20px}
+.trend-up{background:var(--green-light);color:var(--green)}
+.trend-down{background:var(--red-light);color:var(--red)}
+.trend-warn{background:var(--amber-light);color:var(--amber)}
+.kpi-label{font-size:11px;color:var(--text-4);font-weight:500;letter-spacing:.2px;margin-bottom:4px}
+.kpi-value{font-size:28px;font-weight:700;color:var(--text-primary);line-height:1;letter-spacing:-1px;margin-bottom:4px}
+.kpi-sub{font-size:11px;color:var(--text-3)}
+.kpi-bar{height:3px;background:var(--border);border-radius:2px;margin-top:10px;overflow:hidden}
+.kpi-bar-fill{height:100%;border-radius:2px;transition:width 1.2s ease}
+
+/* ─── GRID LAYOUTS ───────────────────────────── */
+.row2{display:grid;grid-template-columns:1fr 2fr;gap:16px;margin-bottom:16px}
+.row3{display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:16px}
+.row-bot{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+
+/* ─── PANEL ──────────────────────────────────── */
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;box-shadow:var(--shadow-sm)}
+.panel-header{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--border)}
+.panel-title{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--text-primary)}
+.panel-title svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.panel-meta{font-size:11px;color:var(--text-4)}
+.panel-body{padding:18px}
+
+.badge{font-family:'IBM Plex Mono',monospace;font-size:9px;padding:2px 8px;border-radius:20px;letter-spacing:.5px;font-weight:500}
+.badge-green{background:var(--green-light);color:var(--green);border:1px solid var(--green-mid)}
+.badge-blue{background:var(--blue-light);color:var(--blue);border:1px solid var(--blue-mid)}
+.badge-red{background:var(--red-light);color:var(--red);border:1px solid var(--red-mid)}
+.badge-amber{background:var(--amber-light);color:var(--amber);border:1px solid var(--amber-mid)}
+
+/* ─── WATER QUALITY ──────────────────────────── */
+.wqi-display{text-align:center;margin-bottom:20px;padding:16px 0}
+.wqi-ring{position:relative;display:inline-flex;align-items:center;justify-content:center;margin-bottom:8px}
+.wqi-ring svg{transform:rotate(-90deg)}
+.wqi-center{position:absolute;text-align:center}
+.wqi-num{font-size:32px;font-weight:700;color:var(--text-primary);letter-spacing:-1.5px;line-height:1}
+.wqi-unit{font-size:10px;color:var(--text-4);font-family:'IBM Plex Mono',monospace;letter-spacing:.5px}
+.wqi-label{font-size:11px;color:var(--green);font-weight:600;margin-top:2px}
+
+.params-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.param-card{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px}
+.param-name{font-size:9px;color:var(--text-4);text-transform:uppercase;letter-spacing:1px;font-family:'IBM Plex Mono',monospace;margin-bottom:5px}
+.param-val{font-size:18px;font-weight:700;color:var(--text-primary);letter-spacing:-.5px}
+.param-status{font-size:10px;font-weight:600;margin-top:2px}
+.p-ok{color:var(--green)} .p-warn{color:var(--amber)} .p-bad{color:var(--red)}
+.param-bar{height:2px;background:var(--border);border-radius:2px;margin-top:7px;overflow:hidden}
+.param-fill{height:100%;border-radius:2px}
+
+/* ─── CHART ──────────────────────────────────── */
+.chart-container{height:195px;position:relative}
+.chart-controls{display:flex;gap:6px;align-items:center;margin-bottom:2px}
+.seg-btn{padding:4px 10px;border-radius:5px;border:1px solid var(--border);background:transparent;color:var(--text-3);font-size:11px;cursor:pointer;font-family:'Outfit',sans-serif;font-weight:500;transition:all .15s}
+.seg-btn:hover{background:var(--surface-2);color:var(--text-primary)}
+.seg-btn.active{background:var(--blue-light);color:var(--blue);border-color:var(--blue-mid);font-weight:600}
+.chart-legend{display:flex;gap:16px;margin-top:10px}
+.legend-item{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text-3)}
+.legend-line{width:16px;height:2px;border-radius:2px}
+.legend-dash{width:16px;height:0;border-top:2px dashed}
+
+/* ─── MAP ────────────────────────────────────── */
+.map-box{position:relative;height:240px;background:linear-gradient(135deg,#EFF6FF 0%,#E0F2FE 50%,#ECFDF5 100%);border-radius:var(--radius);overflow:hidden;border:1px solid var(--border)}
+.map-grid{position:absolute;inset:0;background-image:linear-gradient(rgba(100,116,139,.08) 1px,transparent 1px),linear-gradient(90deg,rgba(100,116,139,.08) 1px,transparent 1px);background-size:32px 32px}
+.map-roads{position:absolute;inset:0}
+.node{position:absolute;border-radius:50%;cursor:pointer;transition:all .25s;border:2px solid white}
+.node:hover{transform:scale(1.5);z-index:10;box-shadow:0 4px 12px rgba(0,0,0,.2)}
+.nn{background:var(--green);box-shadow:0 2px 8px rgba(5,150,105,.4)}
+.nl{background:var(--red);box-shadow:0 2px 8px rgba(220,38,38,.4);animation:blink 1.5s infinite}
+.nw{background:var(--amber);box-shadow:0 2px 8px rgba(217,119,6,.4)}
+@keyframes blink{0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,.4)}50%{box-shadow:0 0 0 8px rgba(220,38,38,0)}}
+.map-label{position:absolute;font-family:'IBM Plex Mono',monospace;font-size:9px;font-weight:500;pointer-events:none}
+.map-legend{position:absolute;bottom:10px;right:10px;background:rgba(255,255,255,.92);backdrop-filter:blur(4px);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 10px;display:flex;flex-direction:column;gap:5px}
+.ml-row{display:flex;align-items:center;gap:6px;font-size:10px;color:var(--text-3)}
+.ml-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.map-title{position:absolute;top:10px;left:10px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--text-4);background:rgba(255,255,255,.8);padding:4px 8px;border-radius:5px;border:1px solid var(--border)}
+
+/* ─── LEAKS ──────────────────────────────────── */
+.leak-list{display:flex;flex-direction:column;gap:8px}
+.leak-item{border-radius:var(--radius-sm);padding:11px 13px;cursor:pointer;transition:all .2s;border:1px solid transparent}
+.leak-item:hover{transform:translateX(2px)}
+.lc{background:var(--red-light);border-color:var(--red-mid);border-left:3px solid var(--red)}
+.lm{background:var(--amber-light);border-color:var(--amber-mid);border-left:3px solid var(--amber)}
+.ll{background:var(--blue-light);border-color:var(--blue-mid);border-left:3px solid var(--blue)}
+.leak-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:5px}
+.leak-zone{font-size:12px;font-weight:600;color:var(--text-primary)}
+.leak-sev{font-family:'IBM Plex Mono',monospace;font-size:9px;padding:2px 7px;border-radius:20px;font-weight:500}
+.sev-c{background:var(--red);color:#fff} .sev-m{background:var(--amber);color:#fff} .sev-l{background:var(--blue);color:#fff}
+.leak-meta{display:flex;gap:10px;font-size:10px;color:var(--text-3);font-family:'IBM Plex Mono',monospace}
+
+.confidence-section{margin-top:16px;padding-top:14px;border-top:1px solid var(--border)}
+.conf-title{font-size:10px;font-weight:600;color:var(--text-4);text-transform:uppercase;letter-spacing:1px;font-family:'IBM Plex Mono',monospace;margin-bottom:10px}
+.conf-row{margin-bottom:8px}
+.conf-header{display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px}
+.conf-node{color:var(--text-3);font-family:'IBM Plex Mono',monospace}
+.conf-pct{font-weight:700;font-family:'IBM Plex Mono',monospace}
+.conf-bar{height:4px;background:var(--border);border-radius:4px;overflow:hidden}
+.conf-fill{height:100%;border-radius:4px;transition:width 1s ease}
+
+/* ─── PUMPS ──────────────────────────────────── */
+.pump-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.pump-card{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;cursor:pointer;transition:all .2s}
+.pump-card:hover{box-shadow:var(--shadow);border-color:var(--blue)}
+.pump-card.p-ok-card{border-left:2px solid var(--green)}
+.pump-card.p-warn-card{border-left:2px solid var(--amber)}
+.pump-card.p-off-card{border-left:2px solid var(--red);opacity:.7}
+.pump-id{font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--text-4);margin-bottom:6px}
+.pump-status{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--text-primary);margin-bottom:4px}
+.status-dot{width:6px;height:6px;border-radius:50%}
+.pump-eff{font-size:10px;color:var(--text-3)}
+
+/* ─── DONUT + LEGEND ─────────────────────────── */
+.donut-wrap{display:flex;align-items:center;gap:16px}
+.donut-legend{flex:1;display:flex;flex-direction:column;gap:8px}
+.dl-row{display:flex;align-items:center;justify-content:space-between;font-size:12px}
+.dl-left{display:flex;align-items:center;gap:8px;color:var(--text-2)}
+.dl-dot{width:10px;height:10px;border-radius:3px;flex-shrink:0}
+.dl-val{font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;color:var(--text-primary)}
+
+.stat-pills{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}
+.stat-pill{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;text-align:center}
+.sp-label{font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--text-4);letter-spacing:.5px;margin-bottom:3px}
+.sp-val{font-size:18px;font-weight:700;letter-spacing:-.5px}
+
+/* ─── AI INSIGHTS ────────────────────────────── */
+.insight-list{display:flex;flex-direction:column;gap:8px}
+.insight{display:flex;gap:10px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:11px 12px}
+.insight-dot{width:6px;height:6px;border-radius:50%;background:var(--blue);flex-shrink:0;margin-top:4px}
+.insight-text{font-size:12px;color:var(--text-2);line-height:1.55}
+.insight-text strong{color:var(--text-primary);font-weight:600}
+
+/* ─── TABS ───────────────────────────────────── */
+.tab-view{display:none}
+.tab-view.active{display:block}
+
+/* ─── PLACEHOLDER PAGES ──────────────────────── */
+.coming-soon{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:400px;text-align:center}
+.cs-icon{width:64px;height:64px;border-radius:16px;background:var(--surface-2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;margin-bottom:16px}
+.cs-icon svg{width:28px;height:28px;stroke:var(--blue);fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.cs-title{font-size:18px;font-weight:700;color:var(--text-primary);margin-bottom:6px}
+.cs-sub{font-size:13px;color:var(--text-4);max-width:300px;line-height:1.5}
+
+/* ─── THRESHOLD INDICATOR ────────────────────── */
+.threshold-bar{position:relative;height:6px;background:var(--border);border-radius:6px;margin-top:8px;overflow:visible}
+.threshold-fill{height:100%;border-radius:6px;transition:width 1s ease}
+.threshold-line{position:absolute;top:-3px;height:12px;width:2px;background:var(--red);border-radius:2px}
+.threshold-label{position:absolute;top:-18px;font-size:8px;color:var(--red);font-family:'IBM Plex Mono',monospace;white-space:nowrap;transform:translateX(-50%)}
+
+/* ─── SCROLLBAR ──────────────────────────────── */
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:var(--surface-2)}
+::-webkit-scrollbar-thumb{background:var(--border-2);border-radius:4px}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sb-logo">
+      <div class="sb-brand">
+        <div class="sb-icon">
+          <svg viewBox="0 0 24 24"><path d="M12 2C6 2 4 8 4 12c0 4.4 3.6 8 8 8s8-3.6 8-8c0-4-2-10-8-10z"/></svg>
+        </div>
+        <div>
+          <div class="sb-name">AquaSync</div>
+          <div class="sb-sub">WATER INTELLIGENCE</div>
+        </div>
+      </div>
+    </div>
+
+    <nav class="sb-nav">
+      <div class="sb-section">Monitoring</div>
+      <button class="nav-item active" onclick="swTab(this,'ov')">
+        <svg class="nav-ico" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        Overview
+      </button>
+      <button class="nav-item" onclick="swTab(this,'wq')">
+        <svg class="nav-ico" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2v-4M9 21H5a2 2 0 0 1-2-2v-4m0 0h18"/></svg>
+        Water Quality
+      </button>
+      <button class="nav-item" onclick="swTab(this,'lk')">
+        <svg class="nav-ico" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        Leak Detection
+        <span class="nav-badge">3</span>
+      </button>
+      <button class="nav-item" onclick="swTab(this,'fc')">
+        <svg class="nav-ico" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        Demand Forecast
+      </button>
+      <button class="nav-item" onclick="swTab(this,'st')">
+        <svg class="nav-ico" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+        STP Monitor
+      </button>
+
+      <div class="sb-section" style="margin-top:8px">Management</div>
+      <button class="nav-item" onclick="swTab(this,'th')">
+        <svg class="nav-ico" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg>
+        Threshold Config
+      </button>
+      <button class="nav-item" onclick="swTab(this,'re')">
+        <svg class="nav-ico" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        Reports
+      </button>
+    </nav>
+
+    <div class="sb-footer">
+      <div class="sb-status">
+        <div class="pulse-dot"></div>
+        <span class="sb-status-txt">ALL SYSTEMS LIVE</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <div class="main">
+
+    <!-- TOPBAR -->
+    <header class="topbar">
+      <div class="tb-left">
+        <div>
+          <div class="page-title">System Overview</div>
+          <div class="page-sub">Urban Water Intelligence · Pipeline Punch</div>
+        </div>
+        <div class="divider-v"></div>
+        <span class="badge badge-green" style="font-size:10px;padding:4px 10px">● LIVE MONITORING</span>
+      </div>
+      <div class="tb-right">
+        <div class="time-chip" id="clock">--:--:--</div>
+        <button class="notif-btn" onclick="document.getElementById('alertBar').style.display='flex'">
+          <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          <div class="notif-dot"></div>
+        </button>
+        <button class="btn btn-ghost" onclick="refreshData()">
+          <svg width="13" height="13" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.37"/></svg>
+          Refresh
+        </button>
+        <button class="btn btn-primary">
+          <svg width="13" height="13" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Export
+        </button>
+      </div>
+    </header>
+
+    <!-- CONTENT -->
+    <main class="content">
+
+      <!-- ALERT BANNER -->
+      <div class="alert-banner" id="alertBar">
+        <div class="ab-left">
+          <div class="ab-icon">
+            <svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          </div>
+          <div>
+            <div class="ab-tag">CRITICAL LEAK</div>
+            <div class="ab-title">Pressure anomaly detected — estimated loss 4.2 L/min</div>
+            <div class="ab-sub">📍 Sector 7-B · Pipeline Node N-047 · Detected 2 min ago · Confidence 97.3%</div>
+            <div class="ab-actions">
+              <button class="btn-sm btn-red-solid">Dispatch Team</button>
+              <button class="btn-sm btn-red-ghost">View Details</button>
+            </div>
+          </div>
+        </div>
+        <button class="ab-close" onclick="document.getElementById('alertBar').style.display='none'">✕</button>
+      </div>
+
+      <!-- OVERVIEW TAB -->
+      <div class="tab-view active" id="tab-ov">
+
+        <!-- KPI ROW -->
+        <div class="kpi-row">
+          <div class="kpi">
+            <div class="kpi-header">
+              <div class="kpi-ico" style="background:var(--teal-light);color:var(--teal)">
+                <svg viewBox="0 0 24 24"><path d="M12 2C6 2 4 8 4 12c0 4.4 3.6 8 8 8s8-3.6 8-8c0-4-2-10-8-10z"/></svg>
+              </div>
+              <span class="kpi-trend trend-up">▲ 2.1%</span>
+            </div>
+            <div class="kpi-label">Water Quality Index</div>
+            <div class="kpi-value" id="wqi">87.4</div>
+            <div class="kpi-sub" style="color:var(--green)">GOOD · WHO Compliant</div>
+            <div class="kpi-bar"><div class="kpi-bar-fill" style="width:87.4%;background:var(--teal)"></div></div>
+          </div>
+
+          <div class="kpi">
+            <div class="kpi-header">
+              <div class="kpi-ico" style="background:var(--blue-light);color:var(--blue)">
+                <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+              </div>
+              <span class="kpi-trend trend-up">▲ 0.3 MLD</span>
+            </div>
+            <div class="kpi-label">Total Demand (Today)</div>
+            <div class="kpi-value">2.47<span style="font-size:14px;font-weight:500;color:var(--text-3)"> MLD</span></div>
+            <div class="kpi-sub">Peak at 18:00 → 3.2 MLD</div>
+            <div class="kpi-bar"><div class="kpi-bar-fill" style="width:70%;background:var(--blue)"></div></div>
+          </div>
+
+          <div class="kpi">
+            <div class="kpi-header">
+              <div class="kpi-ico" style="background:var(--red-light);color:var(--red)">
+                <svg viewBox="0 0 24 24"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+              </div>
+              <span class="kpi-trend trend-down">▼ NRW</span>
+            </div>
+            <div class="kpi-label">Water Loss Rate</div>
+            <div class="kpi-value" id="wloss">18.2<span style="font-size:14px;font-weight:500;color:var(--text-3)">%</span></div>
+            <div class="kpi-sub" style="color:var(--red)">3 leaks active</div>
+            <div class="kpi-bar"><div class="kpi-bar-fill" style="width:18.2%;background:var(--red)"></div></div>
+          </div>
+
+          <div class="kpi">
+            <div class="kpi-header">
+              <div class="kpi-ico" style="background:var(--green-light);color:var(--green)">
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+              </div>
+              <span class="kpi-trend trend-up">▲ 1.2%</span>
+            </div>
+            <div class="kpi-label">STP Efficiency</div>
+            <div class="kpi-value" id="stpe">94.3<span style="font-size:14px;font-weight:500;color:var(--text-3)">%</span></div>
+            <div class="kpi-sub" style="color:var(--green)">Above threshold</div>
+            <div class="kpi-bar"><div class="kpi-bar-fill" style="width:94.3%;background:var(--green)"></div></div>
+          </div>
+
+          <div class="kpi">
+            <div class="kpi-header">
+              <div class="kpi-ico" style="background:var(--amber-light);color:var(--amber)">
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              </div>
+              <span class="kpi-trend trend-warn">● 1 WARN</span>
+            </div>
+            <div class="kpi-label">Pump Station</div>
+            <div class="kpi-value">5<span style="font-size:14px;font-weight:500;color:var(--text-3)">/6</span></div>
+            <div class="kpi-sub" style="color:var(--amber)">P-003 degraded</div>
+            <div class="kpi-bar"><div class="kpi-bar-fill" style="width:83%;background:var(--amber)"></div></div>
+          </div>
+        </div>
+
+        <!-- ROW 2: Water Quality + Demand Chart -->
+        <div class="row2">
+
+          <!-- Water Quality -->
+          <div class="panel">
+            <div class="panel-header">
+              <div class="panel-title">
+                <svg viewBox="0 0 24 24" style="color:var(--teal)"><path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2v-4M9 21H5a2 2 0 0 1-2-2v-4m0 0h18"/></svg>
+                Water Quality
+              </div>
+              <span class="badge badge-green">GOOD</span>
+            </div>
+            <div class="panel-body">
+              <div class="wqi-display">
+                <div class="wqi-ring">
+                  <svg width="100" height="100" viewBox="0 0 100 100">
+                    <circle cx="50" cy="50" r="40" fill="none" stroke="#E2E8F0" stroke-width="8"/>
+                    <circle cx="50" cy="50" r="40" fill="none" stroke="#0891B2" stroke-width="8"
+                      stroke-dasharray="219 251" stroke-linecap="round"/>
+                  </svg>
+                  <div class="wqi-center">
+                    <div class="wqi-num" id="wqig">87.4</div>
+                    <div class="wqi-unit">WQI</div>
+                  </div>
+                </div>
+                <div class="wqi-label">✓ WHO Standard Met</div>
+              </div>
+
+              <div class="params-grid">
+                <div class="param-card">
+                  <div class="param-name">pH Level</div>
+                  <div class="param-val" style="color:var(--green)">7.2</div>
+                  <div class="param-status p-ok">Normal (6.5–8.5)</div>
+                  <div class="threshold-bar">
+                    <div class="threshold-fill" style="width:65%;background:var(--green)"></div>
+                    <div class="threshold-line" style="left:76.9%"><div class="threshold-label">MAX</div></div>
+                  </div>
+                </div>
+                <div class="param-card">
+                  <div class="param-name">Turbidity</div>
+                  <div class="param-val" style="color:var(--amber)">3.8<span style="font-size:11px;font-weight:400;color:var(--text-3)"> NTU</span></div>
+                  <div class="param-status p-warn">Watch (≤4 NTU)</div>
+                  <div class="threshold-bar">
+                    <div class="threshold-fill" style="width:76%;background:var(--amber)"></div>
+                    <div class="threshold-line" style="left:80%"><div class="threshold-label">LIMIT</div></div>
+                  </div>
+                </div>
+                <div class="param-card">
+                  <div class="param-name">Chlorine</div>
+                  <div class="param-val" style="color:var(--red)">0.18<span style="font-size:11px;font-weight:400;color:var(--text-3)"> mg/L</span></div>
+                  <div class="param-status p-bad">Low (Min 0.2)</div>
+                  <div class="threshold-bar">
+                    <div class="threshold-fill" style="width:36%;background:var(--red)"></div>
+                    <div class="threshold-line" style="left:40%"><div class="threshold-label">MIN</div></div>
+                  </div>
+                </div>
+                <div class="param-card">
+                  <div class="param-name">Dissolved O₂</div>
+                  <div class="param-val" style="color:var(--green)">8.4<span style="font-size:11px;font-weight:400;color:var(--text-3)"> mg/L</span></div>
+                  <div class="param-status p-ok">Normal (&gt;7)</div>
+                  <div class="threshold-bar">
+                    <div class="threshold-fill" style="width:84%;background:var(--green)"></div>
+                    <div class="threshold-line" style="left:70%"><div class="threshold-label">MIN</div></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Demand Chart -->
+          <div class="panel">
+            <div class="panel-header">
+              <div class="panel-title">
+                <svg viewBox="0 0 24 24" style="color:var(--blue)"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                Hourly Demand
+              </div>
+              <div style="display:flex;align-items:center;gap:8px">
+                <div class="chart-controls" id="segCtrl">
+                  <button class="seg-btn active" onclick="swSec(this,'all')">All</button>
+                  <button class="seg-btn" onclick="swSec(this,'res')">Residential</button>
+                  <button class="seg-btn" onclick="swSec(this,'ind')">Industrial</button>
+                  <button class="seg-btn" onclick="swSec(this,'irr')">Irrigation</button>
+                </div>
+              </div>
+            </div>
+            <div class="panel-body">
+              <div class="chart-container">
+                <canvas id="dChart"></canvas>
+              </div>
+              <div class="chart-legend">
+                <div class="legend-item"><div class="legend-line" style="background:var(--blue)"></div>Actual consumption</div>
+                <div class="legend-item"><div class="legend-line legend-dash" style="border-color:var(--teal)"></div>ML Forecast</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ROW 3: Map + Leaks -->
+        <div class="row3">
+          <!-- Map -->
+          <div class="panel">
+            <div class="panel-header">
+              <div class="panel-title">
+                <svg viewBox="0 0 24 24" style="color:var(--blue)"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
+                Pipeline Network Map
+              </div>
+              <span class="badge badge-blue">REAL-TIME</span>
+            </div>
+            <div class="panel-body" style="padding:12px">
+              <div class="map-box">
+                <div class="map-grid"></div>
+                <!-- Simulated pipeline lines -->
+                <svg style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none" viewBox="0 0 500 240">
+                  <g stroke="#CBD5E1" stroke-width="1.5" fill="none" opacity=".6">
+                    <line x1="250" y1="120" x2="350" y2="67"/>
+                    <line x1="250" y1="120" x2="125" y2="168"/>
+                    <line x1="250" y1="120" x2="400" y2="149"/>
+                    <line x1="250" y1="120" x2="110" y2="53"/>
+                    <line x1="250" y1="120" x2="250" y2="228"/>
+                    <line x1="250" y1="120" x2="390" y2="188"/>
+                  </g>
+                  <g stroke="#FCA5A5" stroke-width="2" fill="none" stroke-dasharray="4 3">
+                    <line x1="250" y1="120" x2="350" y2="67"/>
+                  </g>
+                </svg>
+                <div class="map-title">CITY PIPELINE GRID</div>
+                <!-- Nodes -->
+                <div class="node nn" style="width:12px;height:12px;left:110px;top:53px;transform:translate(-50%,-50%)"></div>
+                <div class="node nn" style="width:10px;height:10px;left:125px;top:168px;transform:translate(-50%,-50%)"></div>
+                <div class="node nn" style="width:10px;height:10px;left:390px;top:188px;transform:translate(-50%,-50%)"></div>
+                <div class="node nn" style="width:10px;height:10px;left:250px;top:228px;transform:translate(-50%,-50%)"></div>
+                <!-- Hub -->
+                <div class="node" style="width:20px;height:20px;left:250px;top:120px;transform:translate(-50%,-50%);background:var(--blue);box-shadow:0 2px 12px rgba(29,108,240,.5)"></div>
+                <span class="map-label" style="left:258px;top:106px;color:var(--blue)">HUB</span>
+                <!-- Critical node -->
+                <div class="node nl" style="width:14px;height:14px;left:350px;top:67px;transform:translate(-50%,-50%)" onclick="alert('Node N-047\nSector 7-B · Trunk-3\nLeak: 4.2 L/min\nConfidence: 97.3%\nStatus: Team dispatched')"></div>
+                <span class="map-label" style="left:358px;top:52px;color:var(--red)">N-047 ⚠</span>
+                <!-- Warning node -->
+                <div class="node nw" style="width:12px;height:12px;left:400px;top:149px;transform:translate(-50%,-50%)" onclick="alert('Node N-023\nSector 3-A · Branch-7\nLeak: 1.8 L/min\nConfidence: 84.1%\nStatus: Monitoring')"></div>
+
+                <div class="map-legend">
+                  <div class="ml-row"><div class="ml-dot" style="background:var(--green)"></div>Normal</div>
+                  <div class="ml-row"><div class="ml-dot" style="background:var(--amber)"></div>Warning</div>
+                  <div class="ml-row"><div class="ml-dot" style="background:var(--red)"></div>Critical</div>
+                  <div class="ml-row"><div class="ml-dot" style="background:var(--blue)"></div>Hub</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Leaks -->
+          <div class="panel">
+            <div class="panel-header">
+              <div class="panel-title">
+                <svg viewBox="0 0 24 24" style="color:var(--red)"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                Leak Detection
+              </div>
+              <span class="badge badge-red">3 ACTIVE</span>
+            </div>
+            <div class="panel-body">
+              <div class="leak-list">
+                <div class="leak-item lc">
+                  <div class="leak-top">
+                    <div class="leak-zone">Sector 7-B · N-047</div>
+                    <span class="leak-sev sev-c">CRITICAL</span>
+                  </div>
+                  <div class="leak-meta"><span>4.2 L/min</span><span>Trunk-3</span><span>2m ago</span></div>
+                </div>
+                <div class="leak-item lm">
+                  <div class="leak-top">
+                    <div class="leak-zone">Sector 3-A · N-023</div>
+                    <span class="leak-sev sev-m">MODERATE</span>
+                  </div>
+                  <div class="leak-meta"><span>1.8 L/min</span><span>Branch-7</span><span>18m ago</span></div>
+                </div>
+                <div class="leak-item ll">
+                  <div class="leak-top">
+                    <div class="leak-zone">Sector 11-D · N-089</div>
+                    <span class="leak-sev sev-l">MINOR</span>
+                  </div>
+                  <div class="leak-meta"><span>0.4 L/min</span><span>Service-12</span><span>42m ago</span></div>
+                </div>
+              </div>
+
+              <div class="confidence-section">
+                <div class="conf-title">ML Detection Confidence</div>
+                <div class="conf-row">
+                  <div class="conf-header"><span class="conf-node">N-047</span><span class="conf-pct" style="color:var(--red)">97.3%</span></div>
+                  <div class="conf-bar"><div class="conf-fill" style="width:97.3%;background:var(--red)"></div></div>
+                </div>
+                <div class="conf-row">
+                  <div class="conf-header"><span class="conf-node">N-023</span><span class="conf-pct" style="color:var(--amber)">84.1%</span></div>
+                  <div class="conf-bar"><div class="conf-fill" style="width:84.1%;background:var(--amber)"></div></div>
+                </div>
+                <div class="conf-row">
+                  <div class="conf-header"><span class="conf-node">N-089</span><span class="conf-pct" style="color:var(--blue)">71.0%</span></div>
+                  <div class="conf-bar"><div class="conf-fill" style="width:71%;background:var(--blue)"></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ROW BOTTOM: Pumps + Distribution + AI -->
+        <div class="row-bot">
+
+          <!-- Pumps -->
+          <div class="panel">
+            <div class="panel-header">
+              <div class="panel-title">
+                <svg viewBox="0 0 24 24" style="color:var(--text-3)"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+                Pump Stations
+              </div>
+              <span class="panel-meta">6 units · 1 warning</span>
+            </div>
+            <div class="panel-body">
+              <div class="pump-grid">
+                <div class="pump-card p-ok-card">
+                  <div class="pump-id">PUMP-001</div>
+                  <div class="pump-status"><div class="status-dot" style="background:var(--green)"></div>Running</div>
+                  <div class="pump-eff">92% eff · 380 LPM</div>
+                </div>
+                <div class="pump-card p-ok-card">
+                  <div class="pump-id">PUMP-002</div>
+                  <div class="pump-status"><div class="status-dot" style="background:var(--green)"></div>Running</div>
+                  <div class="pump-eff">89% eff · 360 LPM</div>
+                </div>
+                <div class="pump-card p-warn-card">
+                  <div class="pump-id">PUMP-003</div>
+                  <div class="pump-status"><div class="status-dot" style="background:var(--amber)"></div><span style="color:var(--amber)">Degraded</span></div>
+                  <div class="pump-eff" style="color:var(--amber)">67% eff ⚠ Warn</div>
+                </div>
+                <div class="pump-card p-ok-card">
+                  <div class="pump-id">PUMP-004</div>
+                  <div class="pump-status"><div class="status-dot" style="background:var(--green)"></div>Running</div>
+                  <div class="pump-eff">95% eff · 400 LPM</div>
+                </div>
+                <div class="pump-card p-ok-card">
+                  <div class="pump-id">PUMP-005</div>
+                  <div class="pump-status"><div class="status-dot" style="background:var(--green)"></div>Running</div>
+                  <div class="pump-eff">91% eff · 375 LPM</div>
+                </div>
+                <div class="pump-card p-off-card">
+                  <div class="pump-id">PUMP-006</div>
+                  <div class="pump-status"><div class="status-dot" style="background:var(--red)"></div><span style="color:var(--red)">Offline</span></div>
+                  <div class="pump-eff" style="color:var(--red)">Maintenance</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Zone Distribution -->
+          <div class="panel">
+            <div class="panel-header">
+              <div class="panel-title">
+                <svg viewBox="0 0 24 24" style="color:var(--text-3)"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>
+                Zone Distribution
+              </div>
+              <span class="panel-meta">Current supply</span>
+            </div>
+            <div class="panel-body">
+              <div class="donut-wrap">
+                <canvas id="zChart" width="120" height="120"></canvas>
+                <div class="donut-legend">
+                  <div class="dl-row"><div class="dl-left"><div class="dl-dot" style="background:#1D6CF0"></div>Residential</div><div class="dl-val">42%</div></div>
+                  <div class="dl-row"><div class="dl-left"><div class="dl-dot" style="background:#0891B2"></div>Industrial</div><div class="dl-val">28%</div></div>
+                  <div class="dl-row"><div class="dl-left"><div class="dl-dot" style="background:#D97706"></div>Irrigation</div><div class="dl-val">18%</div></div>
+                  <div class="dl-row"><div class="dl-left"><div class="dl-dot" style="background:#059669"></div>Commercial</div><div class="dl-val">12%</div></div>
+                </div>
+              </div>
+              <div class="stat-pills">
+                <div class="stat-pill">
+                  <div class="sp-label">TOTAL SUPPLY</div>
+                  <div class="sp-val" style="color:var(--blue)">2.47 <span style="font-size:12px;color:var(--text-3)">MLD</span></div>
+                </div>
+                <div class="stat-pill">
+                  <div class="sp-label">NRW LOSS</div>
+                  <div class="sp-val" style="color:var(--red)">0.45 <span style="font-size:12px;color:var(--text-3)">MLD</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- AI Insights -->
+          <div class="panel">
+            <div class="panel-header">
+              <div class="panel-title">
+                <svg viewBox="0 0 24 24" style="color:var(--purple)"><path d="M12 2a7 7 0 0 1 7 7c0 2.38-1.19 4.47-3 5.74V17a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1v-2.26C6.19 13.47 5 11.38 5 9a7 7 0 0 1 7-7z"/><line x1="9" y1="21" x2="15" y2="21"/><line x1="9" y1="18" x2="15" y2="18"/></svg>
+                AI Insights
+              </div>
+              <span class="badge" style="background:var(--purple-light);color:var(--purple);border:1px solid #DDD6FE">ML-POWERED</span>
+            </div>
+            <div class="panel-body">
+              <div class="insight-list">
+                <div class="insight">
+                  <div class="insight-dot"></div>
+                  <div class="insight-text"><strong>Demand spike predicted</strong> — 3.2 MLD at 18:00. Pre-fill Reservoir-B by 15:30 for buffer capacity.</div>
+                </div>
+                <div class="insight">
+                  <div class="insight-dot" style="background:var(--amber)"></div>
+                  <div class="insight-text"><strong>Pump-003 degradation</strong> — Vibration pattern suggests bearing wear. Schedule maintenance within 72hrs.</div>
+                </div>
+                <div class="insight">
+                  <div class="insight-dot" style="background:var(--red)"></div>
+                  <div class="insight-text"><strong>Chlorine level low</strong> in Sectors 4–6. Auto-dosing adjustment triggered at 09:42 today.</div>
+                </div>
+                <div class="insight">
+                  <div class="insight-dot" style="background:var(--teal)"></div>
+                  <div class="insight-text"><strong>Monsoon prep alert</strong> — STP overflow risk moderate in 7 days. Activate secondary tank on Day 3.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- WATER QUALITY TAB -->
+      <div class="tab-view" id="tab-wq">
+        <!-- WQ KPI Row -->
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px">
+          <div class="kpi">
+            <div class="kpi-header">
+              <div class="kpi-ico" style="background:var(--teal-light);color:var(--teal)"><svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg></div>
+              <span class="kpi-trend trend-up">▲ 2.1%</span>
+            </div>
+            <div class="kpi-label">Overall WQI</div>
+            <div class="kpi-value">87.4</div>
+            <div class="kpi-sub" style="color:var(--green)">GOOD · WHO Compliant</div>
+            <div class="kpi-bar"><div class="kpi-bar-fill" style="width:87.4%;background:var(--teal)"></div></div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-header">
+              <div class="kpi-ico" style="background:var(--red-light);color:var(--red)"><svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>
+              <span class="kpi-trend trend-down">▼ LOW</span>
+            </div>
+            <div class="kpi-label">Chlorine Level</div>
+            <div class="kpi-value">0.18<span style="font-size:13px;font-weight:400;color:var(--text-3)"> mg/L</span></div>
+            <div class="kpi-sub" style="color:var(--red)">Below min 0.2 mg/L</div>
+            <div class="kpi-bar"><div class="kpi-bar-fill" style="width:36%;background:var(--red)"></div></div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-header">
+              <div class="kpi-ico" style="background:var(--amber-light);color:var(--amber)"><svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></div>
+              <span class="kpi-trend trend-warn">⚠ WATCH</span>
+            </div>
+            <div class="kpi-label">Turbidity</div>
+            <div class="kpi-value">3.8<span style="font-size:13px;font-weight:400;color:var(--text-3)"> NTU</span></div>
+            <div class="kpi-sub" style="color:var(--amber)">Nearing limit (4 NTU)</div>
+            <div class="kpi-bar"><div class="kpi-bar-fill" style="width:76%;background:var(--amber)"></div></div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-header">
+              <div class="kpi-ico" style="background:var(--green-light);color:var(--green)"><svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
+              <span class="kpi-trend trend-up">▲ Normal</span>
+            </div>
+            <div class="kpi-label">Dissolved O₂</div>
+            <div class="kpi-value">8.4<span style="font-size:13px;font-weight:400;color:var(--text-3)"> mg/L</span></div>
+            <div class="kpi-sub" style="color:var(--green)">Above min 7 mg/L</div>
+            <div class="kpi-bar"><div class="kpi-bar-fill" style="width:84%;background:var(--green)"></div></div>
+          </div>
+        </div>
+
+        <!-- WQ Charts Row -->
+        <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:16px">
+          <!-- 24h Trend Chart -->
+          <div class="panel">
+            <div class="panel-header">
+              <div class="panel-title"><svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px;color:var(--teal)"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>24-Hour Parameter Trends</div>
+              <div style="display:flex;gap:6px" id="wqParamBtns">
+                <button class="seg-btn active" onclick="swWQParam(this,'ph')">pH</button>
+                <button class="seg-btn" onclick="swWQParam(this,'turb')">Turbidity</button>
+                <button class="seg-btn" onclick="swWQParam(this,'cl')">Chlorine</button>
+                <button class="seg-btn" onclick="swWQParam(this,'do')">DO</button>
+              </div>
+            </div>
+            <div class="panel-body">
+              <div class="chart-container" style="height:210px"><canvas id="wqTrendChart"></canvas></div>
+              <div style="display:flex;gap:16px;margin-top:10px;align-items:center">
+                <div class="legend-item"><div class="legend-line" style="background:var(--teal)"></div>Sensor reading</div>
+                <div class="legend-item"><div class="legend-line legend-dash" style="border-color:var(--red)"></div>Upper threshold</div>
+                <div class="legend-item"><div class="legend-line legend-dash" style="border-color:var(--amber)"></div>Lower threshold</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Parameter Gauges -->
+          <div class="panel">
+            <div class="panel-header"><div class="panel-title"><svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px;color:var(--blue)"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Live Sensor Status</div><span class="badge badge-green">LIVE</span></div>
+            <div class="panel-body" style="display:flex;flex-direction:column;gap:12px">
+              <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                  <span style="font-size:11px;font-weight:600;color:var(--text-3)">pH Level</span>
+                  <span style="font-size:14px;font-weight:700;color:var(--green);font-family:'IBM Plex Mono',monospace">7.2</span>
+                </div>
+                <div class="threshold-bar"><div class="threshold-fill" style="width:65%;background:var(--green)"></div><div class="threshold-line" style="left:17%"><div class="threshold-label">MIN 6.5</div></div><div class="threshold-line" style="left:93%"><div class="threshold-label">MAX 8.5</div></div></div>
+                <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text-4);margin-top:4px;font-family:'IBM Plex Mono',monospace"><span>0</span><span>14</span></div>
+              </div>
+              <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                  <span style="font-size:11px;font-weight:600;color:var(--text-3)">Turbidity (NTU)</span>
+                  <span style="font-size:14px;font-weight:700;color:var(--amber);font-family:'IBM Plex Mono',monospace">3.8</span>
+                </div>
+                <div class="threshold-bar"><div class="threshold-fill" style="width:76%;background:var(--amber)"></div><div class="threshold-line" style="left:80%"><div class="threshold-label">MAX 4</div></div></div>
+                <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text-4);margin-top:4px;font-family:'IBM Plex Mono',monospace"><span>0</span><span>5</span></div>
+              </div>
+              <div style="background:var(--red-light);border:1px solid var(--red-mid);border-radius:var(--radius-sm);padding:12px">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                  <span style="font-size:11px;font-weight:600;color:var(--text-3)">Chlorine (mg/L)</span>
+                  <span style="font-size:14px;font-weight:700;color:var(--red);font-family:'IBM Plex Mono',monospace">0.18 ⚠</span>
+                </div>
+                <div class="threshold-bar"><div class="threshold-fill" style="width:36%;background:var(--red)"></div><div class="threshold-line" style="left:40%"><div class="threshold-label">MIN 0.2</div></div><div class="threshold-line" style="left:90%"><div class="threshold-label">MAX 4.5</div></div></div>
+                <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text-4);margin-top:4px;font-family:'IBM Plex Mono',monospace"><span>0</span><span>5</span></div>
+              </div>
+              <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                  <span style="font-size:11px;font-weight:600;color:var(--text-3)">Dissolved O₂ (mg/L)</span>
+                  <span style="font-size:14px;font-weight:700;color:var(--green);font-family:'IBM Plex Mono',monospace">8.4</span>
+                </div>
+                <div class="threshold-bar"><div class="threshold-fill" style="width:84%;background:var(--green)"></div><div class="threshold-line" style="left:70%"><div class="threshold-label">MIN 7</div></div></div>
+                <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text-4);margin-top:4px;font-family:'IBM Plex Mono',monospace"><span>0</span><span>10</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sector Heatmap -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <div class="panel">
+            <div class="panel-header"><div class="panel-title"><svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px;color:var(--blue)"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>Zone Quality Heatmap</div><span class="badge badge-blue">12 ZONES</span></div>
+            <div class="panel-body">
+              <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px" id="zoneHeatmap"></div>
+              <div style="display:flex;gap:14px;margin-top:12px;font-size:10px;color:var(--text-3)">
+                <div style="display:flex;align-items:center;gap:5px"><div style="width:12px;height:12px;border-radius:3px;background:var(--green)"></div>Good (80–100)</div>
+                <div style="display:flex;align-items:center;gap:5px"><div style="width:12px;height:12px;border-radius:3px;background:var(--amber)"></div>Fair (60–79)</div>
+                <div style="display:flex;align-items:center;gap:5px"><div style="width:12px;height:12px;border-radius:3px;background:var(--red)"></div>Poor (&lt;60)</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-header"><div class="panel-title"><svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px;color:var(--purple)"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>Quality Alerts Log</div><span class="badge badge-red">4 ACTIVE</span></div>
+            <div class="panel-body" style="display:flex;flex-direction:column;gap:8px">
+              <div style="display:flex;gap:10px;padding:10px;background:var(--red-light);border:1px solid var(--red-mid);border-radius:var(--radius-sm)">
+                <div style="width:6px;height:6px;border-radius:50%;background:var(--red);flex-shrink:0;margin-top:4px"></div>
+                <div><div style="font-size:12px;font-weight:600;color:var(--red)">Chlorine below minimum — Sectors 4, 5, 6</div><div style="font-size:10px;color:var(--text-3);margin-top:2px;font-family:'IBM Plex Mono',monospace">09:42 · Auto-dosing triggered · Monitoring active</div></div>
+              </div>
+              <div style="display:flex;gap:10px;padding:10px;background:var(--amber-light);border:1px solid var(--amber-mid);border-radius:var(--radius-sm)">
+                <div style="width:6px;height:6px;border-radius:50%;background:var(--amber);flex-shrink:0;margin-top:4px"></div>
+                <div><div style="font-size:12px;font-weight:600;color:var(--amber)">Turbidity spike — Zone 3-A (3.8 NTU)</div><div style="font-size:10px;color:var(--text-3);margin-top:2px;font-family:'IBM Plex Mono',monospace">11:17 · Approaching 4 NTU limit · Watch</div></div>
+              </div>
+              <div style="display:flex;gap:10px;padding:10px;background:var(--amber-light);border:1px solid var(--amber-mid);border-radius:var(--radius-sm)">
+                <div style="width:6px;height:6px;border-radius:50%;background:var(--amber);flex-shrink:0;margin-top:4px"></div>
+                <div><div style="font-size:12px;font-weight:600;color:var(--amber)">pH fluctuation — Zone 9-B (7.9 → 8.1)</div><div style="font-size:10px;color:var(--text-3);margin-top:2px;font-family:'IBM Plex Mono',monospace">12:05 · Within range · Minor drift detected</div></div>
+              </div>
+              <div style="display:flex;gap:10px;padding:10px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm)">
+                <div style="width:6px;height:6px;border-radius:50%;background:var(--green);flex-shrink:0;margin-top:4px"></div>
+                <div><div style="font-size:12px;font-weight:600;color:var(--green)">Reservoir-A chlorination completed</div><div style="font-size:10px;color:var(--text-3);margin-top:2px;font-family:'IBM Plex Mono',monospace">08:30 · Levels restored to 0.6 mg/L · Resolved</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- LEAK DETECTION TAB -->
+      <div class="tab-view" id="tab-lk">
+        <!-- KPIs -->
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px">
+          <div class="kpi">
+            <div class="kpi-header"><div class="kpi-ico" style="background:var(--red-light);color:var(--red)"><svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div><span class="kpi-trend trend-down">3 LIVE</span></div>
+            <div class="kpi-label">Active Leaks</div>
+            <div class="kpi-value" style="color:var(--red)">3</div>
+            <div class="kpi-sub" style="color:var(--red)">1 critical · 1 moderate</div>
+            <div class="kpi-bar"><div class="kpi-bar-fill" style="width:100%;background:var(--red)"></div></div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-header"><div class="kpi-ico" style="background:var(--amber-light);color:var(--amber)"><svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg></div><span class="kpi-trend trend-down">▼ +0.3</span></div>
+            <div class="kpi-label">Total Loss Rate</div>
+            <div class="kpi-value">6.4<span style="font-size:13px;font-weight:400;color:var(--text-3)"> L/min</span></div>
+            <div class="kpi-sub" style="color:var(--amber)">18.2% of supply</div>
+            <div class="kpi-bar"><div class="kpi-bar-fill" style="width:18.2%;background:var(--amber)"></div></div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-header"><div class="kpi-ico" style="background:var(--blue-light);color:var(--blue)"><svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div><span class="kpi-trend trend-up">AVG 2m</span></div>
+            <div class="kpi-label">Avg Detection Time</div>
+            <div class="kpi-value">2.4<span style="font-size:13px;font-weight:400;color:var(--text-3)"> min</span></div>
+            <div class="kpi-sub" style="color:var(--green)">Within SLA (&lt;5 min)</div>
+            <div class="kpi-bar"><div class="kpi-bar-fill" style="width:48%;background:var(--blue)"></div></div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-header"><div class="kpi-ico" style="background:var(--green-light);color:var(--green)"><svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div><span class="kpi-trend trend-up">▲ 4.2%</span></div>
+            <div class="kpi-label">ML Accuracy</div>
+            <div class="kpi-value">96.1<span style="font-size:13px;font-weight:400;color:var(--text-3)">%</span></div>
+            <div class="kpi-sub" style="color:var(--green)">Last 30 days</div>
+            <div class="kpi-bar"><div class="kpi-bar-fill" style="width:96.1%;background:var(--green)"></div></div>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+          <!-- Active Leaks Table -->
+          <div class="panel">
+            <div class="panel-header"><div class="panel-title"><svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px;color:var(--red)"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>Active Leak Events</div><span class="badge badge-red">3 ACTIVE</span></div>
+            <div class="panel-body">
+              <table style="width:100%;border-collapse:collapse;font-size:12px">
+                <thead><tr style="border-bottom:2px solid var(--border)">
+                  <th style="text-align:left;padding:6px 8px;font-size:10px;color:var(--text-4);font-weight:600;font-family:'IBM Plex Mono',monospace;letter-spacing:.5px">NODE</th>
+                  <th style="text-align:left;padding:6px 8px;font-size:10px;color:var(--text-4);font-weight:600;font-family:'IBM Plex Mono',monospace;letter-spacing:.5px">SECTOR</th>
+                  <th style="text-align:right;padding:6px 8px;font-size:10px;color:var(--text-4);font-weight:600;font-family:'IBM Plex Mono',monospace;letter-spacing:.5px">LOSS</th>
+                  <th style="text-align:right;padding:6px 8px;font-size:10px;color:var(--text-4);font-weight:600;font-family:'IBM Plex Mono',monospace;letter-spacing:.5px">CONF.</th>
+                  <th style="text-align:center;padding:6px 8px;font-size:10px;color:var(--text-4);font-weight:600;font-family:'IBM Plex Mono',monospace;letter-spacing:.5px">STATUS</th>
+                </tr></thead>
+                <tbody>
+                  <tr style="border-bottom:1px solid var(--border);background:var(--red-light)">
+                    <td style="padding:10px 8px;font-family:'IBM Plex Mono',monospace;font-weight:600;color:var(--red)">N-047</td>
+                    <td style="padding:10px 8px;color:var(--text-2)">Sector 7-B · Trunk-3</td>
+                    <td style="padding:10px 8px;text-align:right;font-weight:700;color:var(--red);font-family:'IBM Plex Mono',monospace">4.2 L/m</td>
+                    <td style="padding:10px 8px;text-align:right;font-family:'IBM Plex Mono',monospace;color:var(--text-2)">97.3%</td>
+                    <td style="padding:10px 8px;text-align:center"><span class="leak-sev sev-c">CRITICAL</span></td>
+                  </tr>
+                  <tr style="border-bottom:1px solid var(--border);background:var(--amber-light)">
+                    <td style="padding:10px 8px;font-family:'IBM Plex Mono',monospace;font-weight:600;color:var(--amber)">N-023</td>
+                    <td style="padding:10px 8px;color:var(--text-2)">Sector 3-A · Branch-7</td>
+                    <td style="padding:10px 8px;text-align:right;font-weight:700;color:var(--amber);font-family:'IBM Plex Mono',monospace">1.8 L/m</td>
+                    <td style="padding:10px 8px;text-align:right;font-family:'IBM Plex Mono',monospace;color:var(--text-2)">84.1%</td>
+                    <td style="padding:10px 8px;text-align:center"><span class="leak-sev sev-m">MODERATE</span></td>
+                  </tr>
+                  <tr style="border-bottom:1px solid var(--border)">
+                    <td style="padding:10px 8px;font-family:'IBM Plex Mono',monospace;font-weight:600;color:var(--blue)">N-089</td>
+                    <td style="padding:10px 8px;color:var(--text-2)">Sector 11-D · Svc-12</td>
+                    <td style="padding:10px 8px;text-align:right;font-weight:700;color:var(--blue);font-family:'IBM Plex Mono',monospace">0.4 L/m</td>
+                    <td style="padding:10px 8px;text-align:right;font-family:'IBM Plex Mono',monospace;color:var(--text-2)">71.0%</td>
+                    <td style="padding:10px 8px;text-align:center"><span class="leak-sev sev-l">MINOR</span></td>
+                  </tr>
+                </tbody>
+              </table>
+              <div style="margin-top:14px;display:flex;gap:8px">
+                <button class="btn btn-primary" style="font-size:11px;padding:6px 12px">Dispatch All Teams</button>
+                <button class="btn btn-ghost" style="font-size:11px;padding:6px 12px">Export Report</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Pressure Chart -->
+          <div class="panel">
+            <div class="panel-header"><div class="panel-title"><svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px;color:var(--blue)"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>Pressure Wave Analysis</div><span class="badge badge-blue">N-047</span></div>
+            <div class="panel-body">
+              <div class="chart-container" style="height:200px"><canvas id="pressureChart"></canvas></div>
+              <div style="display:flex;gap:16px;margin-top:10px">
+                <div class="legend-item"><div class="legend-line" style="background:var(--blue)"></div>Pressure (bar)</div>
+                <div class="legend-item"><div class="legend-line legend-dash" style="border-color:var(--red)"></div>Anomaly threshold</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Pipe Integrity -->
+        <div class="panel">
+          <div class="panel-header"><div class="panel-title"><svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px;color:var(--text-3)"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>Pipeline Integrity Scores</div><span class="panel-meta">12 segments monitored</span></div>
+          <div class="panel-body">
+            <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px" id="pipeIntegrity"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- FORECAST TAB -->
+      <div class="tab-view" id="tab-fc">
+        <!-- KPIs -->
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px">
+          <div class="kpi">
+            <div class="kpi-header"><div class="kpi-ico" style="background:var(--blue-light);color:var(--blue)"><svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div><span class="kpi-trend trend-down">▲ TODAY</span></div>
+            <div class="kpi-label">Today's Demand</div>
+            <div class="kpi-value">2.47<span style="font-size:13px;font-weight:400;color:var(--text-3)"> MLD</span></div>
+            <div class="kpi-sub">Peak 3.2 MLD @ 18:00</div>
+            <div class="kpi-bar"><div class="kpi-bar-fill" style="width:70%;background:var(--blue)"></div></div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-header"><div class="kpi-ico" style="background:var(--green-light);color:var(--green)"><svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></div><span class="kpi-trend trend-up">7-DAY</span></div>
+            <div class="kpi-label">7-Day Forecast Avg</div>
+            <div class="kpi-value">2.61<span style="font-size:13px;font-weight:400;color:var(--text-3)"> MLD</span></div>
+            <div class="kpi-sub" style="color:var(--green)">+5.7% vs last week</div>
+            <div class="kpi-bar"><div class="kpi-bar-fill" style="width:74%;background:var(--green)"></div></div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-header"><div class="kpi-ico" style="background:var(--amber-light);color:var(--amber)"><svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div><span class="kpi-trend trend-warn">DAY 3</span></div>
+            <div class="kpi-label">Shortage Risk Day</div>
+            <div class="kpi-value">Day <span style="color:var(--amber)">3</span></div>
+            <div class="kpi-sub" style="color:var(--amber)">STP overflow risk moderate</div>
+            <div class="kpi-bar"><div class="kpi-bar-fill" style="width:43%;background:var(--amber)"></div></div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-header"><div class="kpi-ico" style="background:var(--purple-light);color:var(--purple)"><svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div><span class="kpi-trend trend-up">98.2%</span></div>
+            <div class="kpi-label">Model Accuracy</div>
+            <div class="kpi-value">98.2<span style="font-size:13px;font-weight:400;color:var(--text-3)">%</span></div>
+            <div class="kpi-sub" style="color:var(--green)">RMSE 0.07 MLD</div>
+            <div class="kpi-bar"><div class="kpi-bar-fill" style="width:98.2%;background:var(--purple)"></div></div>
+          </div>
+        </div>
+
+        <!-- 7-Day Forecast Chart + Breakdown -->
+        <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:16px">
+          <div class="panel">
+            <div class="panel-header"><div class="panel-title"><svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px;color:var(--blue)"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>7-Day Demand Forecast</div><span class="badge badge-blue">ML PREDICTION</span></div>
+            <div class="panel-body">
+              <div class="chart-container" style="height:220px"><canvas id="forecastChart"></canvas></div>
+              <div style="display:flex;gap:16px;margin-top:10px">
+                <div class="legend-item"><div class="legend-line" style="background:var(--blue)"></div>Actual (today)</div>
+                <div class="legend-item"><div class="legend-line legend-dash" style="border-color:var(--teal)"></div>ML Forecast</div>
+                <div class="legend-item"><div style="width:16px;height:8px;background:rgba(29,108,240,.12);border-radius:2px"></div>Confidence band</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Daily breakdown -->
+          <div class="panel">
+            <div class="panel-header"><div class="panel-title"><svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px;color:var(--text-3)"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>Daily Forecast</div></div>
+            <div class="panel-body" style="display:flex;flex-direction:column;gap:6px" id="dailyForecast"></div>
+          </div>
+        </div>
+
+        <!-- Sector Demand + Insights -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <div class="panel">
+            <div class="panel-header"><div class="panel-title"><svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px;color:var(--text-3)"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>Sector Demand Breakdown</div><span class="panel-meta">Today vs Forecast</span></div>
+            <div class="panel-body"><div class="chart-container" style="height:200px"><canvas id="sectorFcChart"></canvas></div></div>
+          </div>
+          <div class="panel">
+            <div class="panel-header"><div class="panel-title"><svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px;color:var(--purple)"><path d="M12 2a7 7 0 0 1 7 7c0 2.38-1.19 4.47-3 5.74V17a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1v-2.26C6.19 13.47 5 11.38 5 9a7 7 0 0 1 7-7z"/><line x1="9" y1="21" x2="15" y2="21"/><line x1="9" y1="18" x2="15" y2="18"/></svg>Planning Recommendations</div><span class="badge" style="background:var(--purple-light);color:var(--purple);border:1px solid #DDD6FE">AI</span></div>
+            <div class="panel-body" style="display:flex;flex-direction:column;gap:8px">
+              <div class="insight"><div class="insight-dot"></div><div class="insight-text"><strong>Pre-fill Reservoir-B by 15:30</strong> — ML predicts 3.2 MLD demand spike at 18:00. Need 0.73 MLD buffer.</div></div>
+              <div class="insight"><div class="insight-dot" style="background:var(--amber)"></div><div class="insight-text"><strong>Day 3 high-demand window</strong> — Monsoon season effect. Activate secondary storage tank to prevent overflow.</div></div>
+              <div class="insight"><div class="insight-dot" style="background:var(--teal)"></div><div class="insight-text"><strong>Weekend demand dip expected</strong> — Industrial sector drops 38%. Recommended scheduled maintenance window: Sat 02:00–06:00.</div></div>
+              <div class="insight"><div class="insight-dot" style="background:var(--green)"></div><div class="insight-text"><strong>Irrigation demand peaks Day 5–6</strong> — Agricultural sector +22%. Ensure zone valve pressures are pre-calibrated.</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- STP TAB -->
+      <div class="tab-view" id="tab-st">
+        <div class="coming-soon">
+          <div class="cs-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg></div>
+          <div class="cs-title">STP Monitor</div>
+          <div class="cs-sub">Sewage treatment plant KPIs, BOD/COD tracking, and effluent quality control dashboard.</div>
+        </div>
+      </div>
+
+      <!-- THRESHOLD CONFIG TAB -->
+      <div class="tab-view" id="tab-th">
+        <div style="max-width:680px">
+          <div style="margin-bottom:20px">
+            <div style="font-size:18px;font-weight:700;color:var(--text-primary);margin-bottom:4px">Threshold Configuration</div>
+            <div style="font-size:13px;color:var(--text-4)">Set alert thresholds for sensors. Backend integration will trigger alerts when values exceed these limits.</div>
+          </div>
+          <div class="panel">
+            <div class="panel-header"><div class="panel-title">Water Quality Thresholds</div><span class="badge badge-blue">6 PARAMS</span></div>
+            <div class="panel-body">
+              <div style="display:flex;flex-direction:column;gap:14px">
+                <div style="display:grid;grid-template-columns:140px 1fr 1fr 90px;gap:12px;align-items:center;font-size:11px;font-weight:600;color:var(--text-4);font-family:'IBM Plex Mono',monospace;border-bottom:1px solid var(--border);padding-bottom:8px">
+                  <span>PARAMETER</span><span>MIN</span><span>MAX</span><span>UNIT</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr 1fr 90px;gap:12px;align-items:center">
+                  <span style="font-size:13px;font-weight:500">pH Level</span>
+                  <input type="number" value="6.5" style="padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:'Outfit',sans-serif;background:var(--surface-2);color:var(--text-primary)">
+                  <input type="number" value="8.5" style="padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:'Outfit',sans-serif;background:var(--surface-2);color:var(--text-primary)">
+                  <span style="font-size:12px;color:var(--text-4)">—</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr 1fr 90px;gap:12px;align-items:center">
+                  <span style="font-size:13px;font-weight:500">Turbidity</span>
+                  <input type="number" value="0" style="padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:'Outfit',sans-serif;background:var(--surface-2);color:var(--text-primary)">
+                  <input type="number" value="4" style="padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:'Outfit',sans-serif;background:var(--surface-2);color:var(--text-primary)">
+                  <span style="font-size:12px;color:var(--text-4)">NTU</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr 1fr 90px;gap:12px;align-items:center">
+                  <span style="font-size:13px;font-weight:500">Chlorine</span>
+                  <input type="number" value="0.2" step="0.01" style="padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:'Outfit',sans-serif;background:var(--surface-2);color:var(--text-primary)">
+                  <input type="number" value="4.0" step="0.01" style="padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:'Outfit',sans-serif;background:var(--surface-2);color:var(--text-primary)">
+                  <span style="font-size:12px;color:var(--text-4)">mg/L</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr 1fr 90px;gap:12px;align-items:center">
+                  <span style="font-size:13px;font-weight:500">Dissolved O₂</span>
+                  <input type="number" value="7.0" step="0.1" style="padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:'Outfit',sans-serif;background:var(--surface-2);color:var(--text-primary)">
+                  <input type="number" value="12.0" step="0.1" style="padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:'Outfit',sans-serif;background:var(--surface-2);color:var(--text-primary)">
+                  <span style="font-size:12px;color:var(--text-4)">mg/L</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr 1fr 90px;gap:12px;align-items:center">
+                  <span style="font-size:13px;font-weight:500">Pressure</span>
+                  <input type="number" value="2.0" step="0.1" style="padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:'Outfit',sans-serif;background:var(--surface-2);color:var(--text-primary)">
+                  <input type="number" value="8.0" step="0.1" style="padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:'Outfit',sans-serif;background:var(--surface-2);color:var(--text-primary)">
+                  <span style="font-size:12px;color:var(--text-4)">bar</span>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr 1fr 90px;gap:12px;align-items:center">
+                  <span style="font-size:13px;font-weight:500">Flow Rate</span>
+                  <input type="number" value="100" style="padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:'Outfit',sans-serif;background:var(--surface-2);color:var(--text-primary)">
+                  <input type="number" value="600" style="padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:'Outfit',sans-serif;background:var(--surface-2);color:var(--text-primary)">
+                  <span style="font-size:12px;color:var(--text-4)">LPM</span>
+                </div>
+              </div>
+              <div style="margin-top:18px;display:flex;gap:10px">
+                <button class="btn btn-primary" onclick="alert('Thresholds saved. Backend API endpoint: POST /api/thresholds')">Save Thresholds</button>
+                <button class="btn btn-ghost">Reset to Defaults</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- REPORTS TAB -->
+      <div class="tab-view" id="tab-re">
+        <div class="coming-soon">
+          <div class="cs-icon"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
+          <div class="cs-title">Reports & Analytics</div>
+          <div class="cs-sub">Automated daily, weekly and monthly reports. Export to PDF, CSV, or push to stakeholder dashboards.</div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script>
+// Clock
+function tick(){ document.getElementById('clock').textContent=new Date().toLocaleTimeString('en-IN',{hour12:false}); }
+tick(); setInterval(tick,1000);
+
+// Tab switch via sidebar
+function swTab(btn, id){
+  document.querySelectorAll('.nav-item').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.tab-view').forEach(t=>t.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('tab-'+id).classList.add('active');
+  const titles={ov:'System Overview',wq:'Water Quality',lk:'Leak Detection',fc:'Demand Forecast',st:'STP Monitor',th:'Threshold Config',re:'Reports'};
+  document.querySelector('.page-title').textContent=titles[id]||'Dashboard';
+}
+
+// Sector toggle
+function swSec(btn,s){
+  document.querySelectorAll('.seg-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  updChart(s);
+}
+
+// Demand chart
+const hrs=Array.from({length:24},(_,i)=>`${String(i).padStart(2,'0')}:00`);
+const curH=new Date().getHours();
+const genA=()=>hrs.map((_,i)=>i<=curH?+(1.2+Math.sin(i/24*Math.PI*2)*.8+Math.random()*.1+(i>16&&i<22?.5:0)).toFixed(2):null);
+const genF=()=>hrs.map((_,i)=>+(1.2+Math.sin(i/24*Math.PI*2)*.8+(i>16&&i<22?.5:0)).toFixed(2));
+
+Chart.defaults.font.family="'Outfit', sans-serif";
+
+const dCtx=document.getElementById('dChart').getContext('2d');
+let dChart=new Chart(dCtx,{
+  type:'line',
+  data:{
+    labels:hrs,
+    datasets:[
+      {label:'Actual',data:genA(),borderColor:'#1D6CF0',backgroundColor:'rgba(29,108,240,0.06)',borderWidth:2,pointRadius:2,pointHoverRadius:5,tension:.4,fill:true,spanGaps:false},
+      {label:'Forecast',data:genF(),borderColor:'#0891B2',borderDash:[5,4],borderWidth:1.5,pointRadius:0,tension:.4,fill:false}
+    ]
+  },
+  options:{
+    responsive:true,maintainAspectRatio:false,
+    interaction:{intersect:false,mode:'index'},
+    plugins:{
+      legend:{display:false},
+      tooltip:{
+        backgroundColor:'#fff',borderColor:'#E2E8F0',borderWidth:1,
+        titleColor:'#64748B',bodyColor:'#0F172A',
+        titleFont:{size:10,weight:'500'},bodyFont:{size:12,weight:'600'},
+        padding:10,cornerRadius:8,
+        callbacks:{label:c=>` ${c.dataset.label}: ${c.parsed.y?.toFixed(2)} MLD`}
+      }
+    },
+    scales:{
+      x:{grid:{color:'rgba(100,116,139,.07)'},ticks:{color:'#94A3B8',font:{size:9},maxTicksLimit:12},border:{color:'rgba(226,232,240,.8)'}},
+      y:{grid:{color:'rgba(100,116,139,.07)'},ticks:{color:'#94A3B8',font:{size:9},callback:v=>v.toFixed(1)+' MLD'},border:{color:'rgba(226,232,240,.8)'},min:.4,max:3.5}
+    }
+  }
+});
+
+function updChart(s){
+  const m={all:1,res:.42,ind:.28,irr:.18};
+  const f=m[s]||1;
+  dChart.data.datasets[0].data=genA().map(v=>v?+(v*f).toFixed(2):null);
+  dChart.data.datasets[1].data=genF().map(v=>+(v*f).toFixed(2));
+  dChart.update();
+}
+
+// Zone donut
+const zCtx=document.getElementById('zChart').getContext('2d');
+new Chart(zCtx,{
+  type:'doughnut',
+  data:{
+    labels:['Residential','Industrial','Irrigation','Commercial'],
+    datasets:[{data:[42,28,18,12],backgroundColor:['#1D6CF0','#0891B2','#D97706','#059669'],borderColor:'#fff',borderWidth:3,hoverOffset:4}]
+  },
+  options:{
+    responsive:false,cutout:'70%',
+    plugins:{legend:{display:false},tooltip:{backgroundColor:'#fff',borderColor:'#E2E8F0',borderWidth:1,titleColor:'#64748B',bodyColor:'#0F172A'}}
+  }
+});
+
+// Refresh simulation
+function refreshData(){
+  const wqi=(84+Math.random()*10).toFixed(1);
+  document.getElementById('wqi').textContent=wqi;
+  document.getElementById('wqig').textContent=wqi;
+  document.getElementById('wloss').textContent=(14+Math.random()*7).toFixed(1);
+  document.getElementById('stpe').textContent=(90+Math.random()*8).toFixed(1);
+  dChart.data.datasets[0].data=genA();
+  dChart.update();
+}
+
+// ── WATER QUALITY TREND CHART ────────────────────────────────────
+const wqHrs = Array.from({length:24},(_,i)=>`${String(i).padStart(2,'0')}:00`);
+const wqDatasets = {
+  ph:   { data: wqHrs.map((_,i)=>+(6.9+Math.sin(i/8)*0.4+Math.random()*0.15).toFixed(2)), min:6.5, max:8.5, color:'#0891B2', unit:'pH' },
+  turb: { data: wqHrs.map((_,i)=>+(2.5+Math.abs(Math.sin(i/6))*1.8+Math.random()*0.3).toFixed(2)), min:0, max:4, color:'#D97706', unit:'NTU' },
+  cl:   { data: wqHrs.map((_,i)=>+(0.35+Math.sin(i/12)*0.18+Math.random()*0.05).toFixed(3)), min:0.2, max:4.0, color:'#DC2626', unit:'mg/L' },
+  do:   { data: wqHrs.map((_,i)=>+(8.0+Math.sin(i/10)*0.6+Math.random()*0.2).toFixed(2)), min:7.0, max:12.0, color:'#059669', unit:'mg/L' }
+};
+let curWQParam = 'ph';
+const wqCtx = document.getElementById('wqTrendChart').getContext('2d');
+let wqChart = new Chart(wqCtx, {
+  type:'line',
+  data:{ labels:wqHrs, datasets:[
+    {label:'Reading',data:wqDatasets.ph.data,borderColor:'#0891B2',backgroundColor:'rgba(8,145,178,0.07)',borderWidth:2,pointRadius:2,tension:.4,fill:true},
+    {label:'Max Threshold',data:Array(24).fill(wqDatasets.ph.max),borderColor:'rgba(220,38,38,.5)',borderDash:[4,3],borderWidth:1.5,pointRadius:0,fill:false},
+    {label:'Min Threshold',data:Array(24).fill(wqDatasets.ph.min),borderColor:'rgba(217,119,6,.5)',borderDash:[4,3],borderWidth:1.5,pointRadius:0,fill:false}
+  ]},
+  options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{backgroundColor:'#fff',borderColor:'#E2E8F0',borderWidth:1,titleColor:'#64748B',bodyColor:'#0F172A',padding:8,cornerRadius:8}},
+  scales:{x:{grid:{color:'rgba(100,116,139,.07)'},ticks:{color:'#94A3B8',font:{size:9},maxTicksLimit:12},border:{color:'rgba(226,232,240,.8)'}},y:{grid:{color:'rgba(100,116,139,.07)'},ticks:{color:'#94A3B8',font:{size:9}},border:{color:'rgba(226,232,240,.8)'}}}}
+});
+function swWQParam(btn,p){
+  document.querySelectorAll('#wqParamBtns .seg-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active'); curWQParam=p;
+  const d=wqDatasets[p];
+  wqChart.data.datasets[0].data=d.data; wqChart.data.datasets[0].borderColor=d.color; wqChart.data.datasets[0].backgroundColor=d.color.replace(')',',0.07)').replace('rgb','rgba');
+  wqChart.data.datasets[1].data=Array(24).fill(d.max);
+  wqChart.data.datasets[2].data=Array(24).fill(d.min);
+  wqChart.update();
+}
+
+// ── ZONE HEATMAP ─────────────────────────────────────────────────
+const zones=[{n:'Z-1A',v:91},{n:'Z-2B',v:85},{n:'Z-3A',v:72},{n:'Z-4C',v:88},{n:'Z-5B',v:63},{n:'Z-6A',v:91},{n:'Z-7B',v:54},{n:'Z-8D',v:87},{n:'Z-9A',v:78},{n:'Z-10C',v:82},{n:'Z-11D',v:89},{n:'Z-12B',v:66}];
+const hm=document.getElementById('zoneHeatmap');
+if(hm){ zones.forEach(z=>{
+  const col=z.v>=80?'var(--green)':z.v>=60?'var(--amber)':'var(--red)';
+  const bg=z.v>=80?'var(--green-light)':z.v>=60?'var(--amber-light)':'var(--red-light)';
+  const bd=z.v>=80?'var(--green-mid)':z.v>=60?'var(--amber-mid)':'var(--red-mid)';
+  hm.innerHTML+=`<div style="background:${bg};border:1px solid ${bd};border-radius:7px;padding:10px;text-align:center;cursor:pointer" title="WQI: ${z.v}">
+    <div style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--text-4);margin-bottom:4px">${z.n}</div>
+    <div style="font-size:18px;font-weight:700;color:${col}">${z.v}</div>
+  </div>`;
+});}
+
+// ── PRESSURE CHART ────────────────────────────────────────────────
+const pCtx=document.getElementById('pressureChart')?.getContext('2d');
+if(pCtx){
+  const pts=Array.from({length:60},(_,i)=>+(4.5+Math.sin(i/5)*.3+Math.random()*.15+(i>35&&i<45?-1.4:0)).toFixed(2));
+  new Chart(pCtx,{type:'line',data:{labels:Array.from({length:60},(_,i)=>i%5===0?`-${60-i}s`:''),datasets:[
+    {label:'Pressure',data:pts,borderColor:'#1D6CF0',backgroundColor:'rgba(29,108,240,0.05)',borderWidth:2,pointRadius:0,tension:.35,fill:true},
+    {label:'Threshold',data:Array(60).fill(3.5),borderColor:'rgba(220,38,38,.5)',borderDash:[4,3],borderWidth:1.5,pointRadius:0,fill:false}
+  ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{backgroundColor:'#fff',borderColor:'#E2E8F0',borderWidth:1,titleColor:'#64748B',bodyColor:'#0F172A',padding:8,cornerRadius:8,callbacks:{label:c=>` ${c.dataset.label}: ${c.parsed.y} bar`}}},
+  scales:{x:{grid:{color:'rgba(100,116,139,.07)'},ticks:{color:'#94A3B8',font:{size:9}},border:{color:'rgba(226,232,240,.8)'}},y:{grid:{color:'rgba(100,116,139,.07)'},ticks:{color:'#94A3B8',font:{size:9},callback:v=>v+' bar'},border:{color:'rgba(226,232,240,.8)'},min:2,max:6}}}});
+}
+
+// ── PIPE INTEGRITY ────────────────────────────────────────────────
+const pipes=[{n:'T-1',v:92},{n:'T-2',v:88},{n:'T-3',v:41},{n:'B-1',v:96},{n:'B-2',v:73},{n:'B-3',v:85},{n:'B-4',v:91},{n:'B-5',v:67},{n:'B-6',v:88},{n:'S-1',v:95},{n:'S-2',v:79},{n:'S-3',v:56}];
+const pi=document.getElementById('pipeIntegrity');
+if(pi){ pipes.forEach(p=>{
+  const col=p.v>=80?'var(--green)':p.v>=60?'var(--amber)':'var(--red)';
+  const bg=p.v>=80?'var(--green-light)':p.v>=60?'var(--amber-light)':'var(--red-light)';
+  const bd=p.v>=80?'var(--green-mid)':p.v>=60?'var(--amber-mid)':'var(--red-mid)';
+  pi.innerHTML+=`<div style="background:${bg};border:1px solid ${bd};border-radius:8px;padding:12px;text-align:center">
+    <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--text-4);margin-bottom:6px">${p.n}</div>
+    <div style="font-size:20px;font-weight:700;color:${col};letter-spacing:-.5px">${p.v}</div>
+    <div style="height:4px;background:var(--border);border-radius:4px;margin-top:6px;overflow:hidden"><div style="height:100%;width:${p.v}%;background:${col};border-radius:4px"></div></div>
+  </div>`;
+});}
+
+// ── 7-DAY FORECAST CHART ──────────────────────────────────────────
+const fcCtx=document.getElementById('forecastChart')?.getContext('2d');
+if(fcCtx){
+  const days=['Today','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const actual=[2.47,null,null,null,null,null,null];
+  const forecast=[2.47,2.53,2.71,2.89,2.65,2.44,2.58];
+  const upper=forecast.map(v=>+(v+.18).toFixed(2));
+  const lower=forecast.map(v=>+(v-.18).toFixed(2));
+  new Chart(fcCtx,{type:'line',data:{labels:days,datasets:[
+    {label:'Confidence Upper',data:upper,borderColor:'transparent',backgroundColor:'rgba(29,108,240,.12)',borderWidth:0,pointRadius:0,tension:.4,fill:'+1'},
+    {label:'Confidence Lower',data:lower,borderColor:'transparent',backgroundColor:'transparent',borderWidth:0,pointRadius:0,tension:.4,fill:false},
+    {label:'Actual',data:actual,borderColor:'#1D6CF0',backgroundColor:'rgba(29,108,240,.08)',borderWidth:2.5,pointRadius:4,pointBackgroundColor:'#1D6CF0',tension:.4,fill:false,spanGaps:false},
+    {label:'ML Forecast',data:forecast,borderColor:'#0891B2',borderDash:[5,4],borderWidth:2,pointRadius:3,pointBackgroundColor:'#0891B2',tension:.4,fill:false}
+  ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{backgroundColor:'#fff',borderColor:'#E2E8F0',borderWidth:1,titleColor:'#64748B',bodyColor:'#0F172A',padding:8,cornerRadius:8,callbacks:{label:c=>c.dataset.label!=='Confidence Upper'&&c.dataset.label!=='Confidence Lower'?` ${c.dataset.label}: ${c.parsed.y?.toFixed(2)} MLD`:null}}},
+  scales:{x:{grid:{color:'rgba(100,116,139,.07)'},ticks:{color:'#64748B',font:{size:11,weight:'500'}},border:{color:'rgba(226,232,240,.8)'}},y:{grid:{color:'rgba(100,116,139,.07)'},ticks:{color:'#94A3B8',font:{size:9},callback:v=>v.toFixed(1)+' MLD'},border:{color:'rgba(226,232,240,.8)'},min:1.8,max:3.4}}}});
+}
+
+// ── DAILY FORECAST LIST ───────────────────────────────────────────
+const fcDays=[{d:'Today',v:2.47,change:'+0%',col:'var(--blue)',risk:'Normal'},{d:'Tuesday',v:2.53,change:'+2.4%',col:'var(--green)',risk:'Normal'},{d:'Wednesday',v:2.71,change:'+9.7%',col:'var(--amber)',risk:'Elevated'},{d:'Thursday',v:2.89,change:'+17%',col:'var(--red)',risk:'High'},{d:'Friday',v:2.65,change:'+7.3%',col:'var(--amber)',risk:'Elevated'},{d:'Saturday',v:2.44,change:'-1.2%',col:'var(--green)',risk:'Normal'},{d:'Sunday',v:2.58,change:'+4.5%',col:'var(--green)',risk:'Normal'}];
+const df=document.getElementById('dailyForecast');
+if(df){ fcDays.forEach(d=>{
+  df.innerHTML+=`<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px">
+    <span style="font-size:12px;font-weight:500;color:var(--text-2);width:90px">${d.d}</span>
+    <div style="flex:1;height:4px;background:var(--border);border-radius:4px;overflow:hidden;margin:0 10px"><div style="height:100%;width:${(d.v/3.5*100).toFixed(0)}%;background:${d.col};border-radius:4px"></div></div>
+    <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:700;color:${d.col};width:55px;text-align:right">${d.v} MLD</span>
+    <span style="font-size:9px;padding:2px 6px;border-radius:4px;background:var(--border);color:var(--text-3);font-family:'IBM Plex Mono',monospace;margin-left:6px;width:56px;text-align:center">${d.risk}</span>
+  </div>`;
+});}
+
+// ── SECTOR FORECAST CHART ─────────────────────────────────────────
+const sfCtx=document.getElementById('sectorFcChart')?.getContext('2d');
+if(sfCtx){ new Chart(sfCtx,{type:'bar',data:{
+  labels:['Residential','Industrial','Irrigation','Commercial'],
+  datasets:[
+    {label:'Today',data:[1.04,0.69,0.44,0.30],backgroundColor:'rgba(29,108,240,.6)',borderRadius:5,borderSkipped:false},
+    {label:'Forecast Avg',data:[1.11,0.72,0.52,0.26],backgroundColor:'rgba(8,145,178,.5)',borderRadius:5,borderSkipped:false}
+  ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{font:{family:"'Outfit',sans-serif",size:11},color:'#64748B',boxWidth:10,boxHeight:10}},tooltip:{backgroundColor:'#fff',borderColor:'#E2E8F0',borderWidth:1,titleColor:'#64748B',bodyColor:'#0F172A',padding:8,cornerRadius:8,callbacks:{label:c=>` ${c.dataset.label}: ${c.parsed.y.toFixed(2)} MLD`}}},
+  scales:{x:{grid:{display:false},ticks:{color:'#64748B',font:{size:10}},border:{color:'rgba(226,232,240,.8)'}},y:{grid:{color:'rgba(100,116,139,.07)'},ticks:{color:'#94A3B8',font:{size:9},callback:v=>v.toFixed(1)},border:{color:'rgba(226,232,240,.8)'}}}}}); }
+
+// Auto-tick WQI
+setInterval(()=>{
+  const cur=parseFloat(document.getElementById('wqi').textContent);
+  const nw=Math.max(70,Math.min(99,cur+(Math.random()-.5)*1.2));
+  document.getElementById('wqi').textContent=nw.toFixed(1);
+  document.getElementById('wqig').textContent=nw.toFixed(1);
+},30000);
+</script>
+</body>
+</html>

@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AquaSync — Urban Water Intelligence</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/styles-extended.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="sb-logo">
+      <div class="sb-brand">
+        <div class="sb-icon">
+          <svg viewBox="0 0 24 24"><path d="M12 2C6 2 4 8 4 12c0 4.4 3.6 8 8 8s8-3.6 8-8c0-4-2-10-8-10z"/></svg>
+        </div>
+        <div>
+          <div class="sb-name">AquaSync</div>
+          <div class="sb-sub">WATER INTELLIGENCE</div>
+        </div>
+      </div>
+    </div>
+
+    <nav class="sb-nav">
+      <div class="sb-section">Monitoring</div>
+      <button class="nav-item active" data-tab="overview">
+        <svg class="nav-ico" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        Overview
+      </button>
+      <button class="nav-item" data-tab="quality">
+        <svg class="nav-ico" viewBox="0 0 24 24"><path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2v-4M9 21H5a2 2 0 0 1-2-2v-4m0 0h18"/></svg>
+        Water Quality
+      </button>
+      <button class="nav-item" data-tab="leaks">
+        <svg class="nav-ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        Leak Detection
+        <span class="nav-badge" id="leak-count">0</span>
+      </button>
+      <button class="nav-item" data-tab="network">
+        <svg class="nav-ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+        Network Map
+      </button>
+      <button class="nav-item" data-tab="irrigation">
+        <svg class="nav-ico" viewBox="0 0 24 24"><path d="M12 2v20M17 7l-5 5-5-5M7 17l5-5 5 5"/></svg>
+        Smart Irrigation
+      </button>
+      <button class="nav-item" data-tab="hardware">
+        <svg class="nav-ico" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+        Hardware Status
+      </button>
+      <button class="nav-item" data-tab="analytics">
+        <svg class="nav-ico" viewBox="0 0 24 24"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>
+        Analytics & AI
+      </button>
+      <button class="nav-item" data-tab="stp">
+        <svg class="nav-ico" viewBox="0 0 24 24"><path d="M4 20h16v-2H4v2z"/><path d="M6 14h12v-2H6v2z"/><path d="M8 8h8V6H8v2z"/></svg>
+        STP Monitor
+      </button>
+      <button class="nav-item" data-tab="forecast">
+        <svg class="nav-ico" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        Demand Forecast
+      </button>
+      <button class="nav-item" data-tab="ai-predictions">
+        <svg class="nav-ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 6v6m5.66-13.66l-4.24 4.24m0 6.36l4.24 4.24M23 12h-6m-6 0H5m13.66 5.66l-4.24-4.24m0-6.36l4.24-4.24"/></svg>
+        AI Predictions
+      </button>
+    </nav>
+
+    <div class="sb-section" style="margin-top:8px">Management</div>
+    <nav class="sb-nav">
+      <button class="nav-item" data-tab="thresholds">
+        <svg class="nav-ico" viewBox="0 0 24 24"><path d="M12 20V10M18 20V4M6 20v-4"/></svg>
+        Threshold Config
+      </button>
+      <button class="nav-item" data-tab="reports">
+        <svg class="nav-ico" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        Reports
+      </button>
+    </nav>
+
+    <div class="sb-footer">
+      <div class="sb-status">
+        <div class="pulse-dot"></div>
+        <span class="sb-status-txt" id="connection-status">CONNECTING...</span>
+      </div>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div class="tb-left">
+        <div>
+          <div class="page-title" id="page-title">System Overview</div>
+          <div class="page-sub">Urban Water Intelligence · Real-time Monitoring</div>
+        </div>
+        <div class="divider-v"></div>
+        <span class="badge badge-green">● LIVE MONITORING</span>
+      </div>
+      <div class="tb-right">
+        <div class="time-chip" id="clock">--:--:--</div>
+        <button class="btn btn-ghost" onclick="app.refreshData()">
+          <svg width="13" height="13" viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.37"/></svg>
+          Refresh
+        </button>
+        <button class="btn btn-primary" onclick="app.exportData()">
+          <svg width="13" height="13" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Export
+        </button>
+        <button class="btn btn-primary" onclick="app.toggleAIChat()" style="background:var(--blue)">
+          <svg width="13" height="13" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          Help Center
+        </button>
+      </div>
+    </header>
+
+    <main class="content">
+      <div id="alert-container"></div>
+      <div id="app-content"></div>
+    </main>
+    
+    <!-- AI Chatbot -->
+    <div id="ai-chatbot" style="display:none;position:fixed;bottom:20px;right:20px;width:380px;height:550px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow-md);z-index:1000;display:flex;flex-direction:column">
+      <div style="padding:16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--purple);color:white;border-radius:var(--radius-lg) var(--radius-lg) 0 0">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:32px;height:32px;background:rgba(255,255,255,0.2);border-radius:50%;display:flex;align-items:center;justify-content:center">
+            <svg width="18" height="18" viewBox="0 0 24 24" stroke="white" fill="none" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 6v6m5.66-13.66l-4.24 4.24m0 6.36l4.24 4.24M23 12h-6m-6 0H5m13.66 5.66l-4.24-4.24m0-6.36l4.24-4.24"/></svg>
+          </div>
+          <div>
+            <div style="font-size:14px;font-weight:600">Help Center</div>
+            <div style="font-size:10px;opacity:0.9">Guidance & operations control</div>
+          </div>
+        </div>
+        <button onclick="app.toggleAIChat()" style="background:transparent;border:none;color:white;cursor:pointer;font-size:20px;padding:0;width:28px;height:28px">×</button>
+      </div>
+      <div id="chat-messages" style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px"></div>
+      <div style="padding:12px;border-top:1px solid var(--border)">
+        <div style="display:flex;gap:8px">
+          <input type="text" id="chat-input" placeholder="Ask about water management..." style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:13px" onkeypress="if(event.key==='Enter') app.sendAIMessage()">
+          <button onclick="app.sendAIMessage()" style="padding:8px 16px;background:var(--purple);color:white;border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:600;font-size:13px">Send</button>
+        </div>
+        <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+          <button onclick="app.quickAIQuery('leak')" style="padding:4px 10px;background:var(--surface-2);border:1px solid var(--border);border-radius:20px;font-size:11px;cursor:pointer">🔴 Leak Analysis</button>
+          <button onclick="app.quickAIQuery('irrigation')" style="padding:4px 10px;background:var(--surface-2);border:1px solid var(--border);border-radius:20px;font-size:11px;cursor:pointer">🌱 Irrigation Tips</button>
+          <button onclick="app.quickAIQuery('forecast')" style="padding:4px 10px;background:var(--surface-2);border:1px solid var(--border);border-radius:20px;font-size:11px;cursor:pointer">📊 Demand Forecast</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="/main.js"></script>
+</body>
+</html>
