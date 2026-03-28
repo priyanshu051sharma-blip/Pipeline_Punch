@@ -1,4 +1,6 @@
-const API_URL = 'http://localhost:3000/api';
+// Environment-driven API URLs for localhost and production
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:3000';
 let ws = null;
 
 class AquaSyncApp {
@@ -375,7 +377,7 @@ class AquaSyncApp {
 
   async connectWebSocket() {
     try {
-      ws = new WebSocket('ws://localhost:3000');
+      ws = new WebSocket(WS_URL);
       
       ws.onopen = () => {
         console.log('WebSocket connected');

@@ -14,7 +14,14 @@ require('dotenv').config({ path: path.join(__dirname, 'env') });
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(cors());
+// Configure CORS for both local and production environments
+const corsOrigin = process.env.CORS_ORIGIN || 'http://localhost:5173';
+app.use(cors({
+  origin: corsOrigin,
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(express.json());
 
 // Simulated sensor data (will be replaced with hardware integration)
@@ -1411,6 +1418,16 @@ app.get('/api/integrations/thingspeak/status', (req, res) => {
     ...thingspeakStatus,
     channelId: THINGSPEAK_CHANNEL_ID || null,
     pollSeconds: THINGSPEAK_POLL_SECONDS
+  });
+});
+
+// Health check endpoint for Render deployment monitoring
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    environment: process.env.NODE_ENV || 'development'
   });
 });
 
