@@ -61,6 +61,14 @@ class AquaSyncApp {
     this.startSTPAutoPilot();
     await this.connectWebSocket();
     await this.loadData();
+    this.startPotabilityRefresh();
+  }
+
+  startPotabilityRefresh() {
+    // Keep trained model outputs fresh even if websocket payload misses potability block.
+    setInterval(() => {
+      this.loadPotabilityData();
+    }, 12000);
   }
 
   setAIChatVisibility(isOpen) {
@@ -99,6 +107,54 @@ class AquaSyncApp {
     return parseFloat(num.toFixed(decimals));
   }
 
+  buildPotabilityFallbackFromWaterQuality(waterQuality = {}) {
+    const ph = Number(waterQuality.ph ?? 7.0);
+    const turbidity = Number(waterQuality.turbidity ?? 2.0);
+    const tds = Number(waterQuality.tds ?? 150);
+    const chlorine = Number(waterQuality.chlorine ?? 0.8);
+    const temperature = Number(waterQuality.temperature ?? 25);
+    const wqi = Number(waterQuality.wqi ?? 80);
+
+    const ranges = [
+      { key: 'ph', label: 'pH', value: ph, safeMin: 6.5, safeMax: 8.5, unit: '', status: ph >= 6.5 && ph <= 8.5 ? 'in_range' : 'out_of_range', severity: ph >= 6.5 && ph <= 8.5 ? 'low' : 'medium' },
+      { key: 'turbidity', label: 'Turbidity', value: turbidity, safeMin: 0, safeMax: 4, unit: 'NTU', status: turbidity <= 4 ? 'in_range' : 'out_of_range', severity: turbidity <= 4 ? 'low' : 'high' },
+      { key: 'tds', label: 'TDS', value: tds, safeMin: 50, safeMax: 500, unit: 'ppm', status: tds >= 50 && tds <= 500 ? 'in_range' : 'out_of_range', severity: tds >= 50 && tds <= 500 ? 'low' : 'medium' },
+      { key: 'chlorine', label: 'Chlorine Residual', value: chlorine, safeMin: 0.2, safeMax: 2.0, unit: 'mg/L', status: chlorine >= 0.2 && chlorine <= 2.0 ? 'in_range' : 'out_of_range', severity: chlorine >= 0.2 && chlorine <= 2.0 ? 'low' : 'medium' },
+      { key: 'temperature', label: 'Temperature', value: temperature, safeMin: 18, safeMax: 32, unit: 'deg C', status: temperature >= 18 && temperature <= 32 ? 'in_range' : 'out_of_range', severity: temperature >= 18 && temperature <= 32 ? 'low' : 'medium' },
+      { key: 'wqi', label: 'WQI', value: wqi, safeMin: 70, safeMax: 100, unit: '', status: wqi >= 70 ? 'in_range' : 'out_of_range', severity: wqi >= 70 ? 'low' : 'high' }
+    ];
+
+    const outCount = ranges.filter((r) => r.status === 'out_of_range').length;
+    const hybridScore = Math.max(0, Math.min(100, Math.round((wqi * 0.6 + Math.max(0, (100 - turbidity * 10)) * 0.2 + Math.max(0, (100 - Math.max(0, tds - 100) / 5)) * 0.2))));
+    const hybridLabel = hybridScore >= 75 ? 'Safe' : (hybridScore >= 55 ? 'Caution' : 'Unsafe');
+    const riskOverall = outCount >= 3 ? 'High' : (outCount >= 1 ? 'Medium' : 'Low');
+
+    return {
+      updatedAt: new Date().toISOString(),
+      ranges,
+      fuzzy: {
+        score: hybridScore,
+        confidence: Number(Math.max(0.55, 1 - outCount * 0.15).toFixed(2))
+      },
+      ml: {
+        score: hybridScore,
+        accuracy: null,
+        label: hybridLabel
+      },
+      hybrid: {
+        score: hybridScore,
+        label: hybridLabel,
+        binaryClass: hybridScore >= 75 ? 1 : 0,
+        recommendedUse: hybridLabel === 'Safe' ? 'Direct drinking' : (hybridLabel === 'Caution' ? 'Use after treatment (boiling/UV/chlorination)' : 'Do not drink until treated')
+      },
+      diseaseRisk: {
+        overall: riskOverall,
+        conditions: [],
+        recommendations: outCount > 0 ? ['Treat out-of-range parameters before potable use.'] : ['No disease trigger detected for current ranges.']
+      }
+    };
+  }
+
   async connectWebSocket() {
     try {
       ws = new WebSocket('ws://localhost:3000');
@@ -117,6 +173,11 @@ class AquaSyncApp {
           
           // Update data from server
           this.data = message.data;
+
+          // Preserve latest trained potability output if websocket payload does not include it.
+          if (!this.data.waterPotability && this.lastPotabilityData) {
+            this.data.waterPotability = this.lastPotabilityData;
+          }
           
           // Restore irrigation mode if it was manually set
           if (currentMode && this.data.irrigation) {
@@ -133,6 +194,10 @@ class AquaSyncApp {
           }
           
           this.render();
+
+          if (!message.data?.waterPotability) {
+            this.loadPotabilityData();
+          }
         }
       };
 
@@ -153,11 +218,32 @@ class AquaSyncApp {
     try {
       const response = await fetch(`${API_URL}/dashboard`);
       this.data = await response.json();
+      await this.loadPotabilityData();
       this.render();
     } catch (error) {
       console.warn('Failed to load API data, using fallback dummy data.');
       this.data = this.getDummyData();
       this.render();
+    }
+  }
+
+  async loadPotabilityData() {
+    try {
+      const res = await fetch(`${API_URL}/water-potability`);
+      if (!res.ok) return;
+      const potability = await res.json();
+      if (!potability || typeof potability !== 'object') return;
+
+      this.lastPotabilityData = potability;
+      if (this.data) {
+        this.data.waterPotability = potability;
+      }
+
+      if (this.currentTab === 'quality' || this.currentTab === 'thresholds') {
+        this.render();
+      }
+    } catch (error) {
+      // Ignore transient fetch issues to avoid noisy UX.
     }
   }
 
@@ -172,6 +258,48 @@ class AquaSyncApp {
         chlorine: 0.18,
         temperature: 24.5,
         flowRate: 12.5
+      },
+      waterPotability: {
+        updatedAt: new Date().toISOString(),
+        inputReadings: { ph: 7.2, turbidity: 3.8, tds: 145, chlorine: 0.18, temperature: 24.5, wqi: 87.4 },
+        ranges: [
+          { key: 'ph', label: 'pH', value: 7.2, safeMin: 6.5, safeMax: 8.5, unit: '', status: 'in_range', severity: 'low' },
+          { key: 'turbidity', label: 'Turbidity', value: 3.8, safeMin: 0, safeMax: 4, unit: 'NTU', status: 'in_range', severity: 'low' },
+          { key: 'tds', label: 'TDS', value: 145, safeMin: 50, safeMax: 500, unit: 'ppm', status: 'in_range', severity: 'low' },
+          { key: 'chlorine', label: 'Chlorine Residual', value: 0.18, safeMin: 0.2, safeMax: 2.0, unit: 'mg/L', status: 'out_of_range', severity: 'medium' }
+        ],
+        fuzzy: { method: 'Mamdani', score: 69.4, label: 'Moderate', confidence: 0.71, rulesFired: [{ id: 'R5', rule: 'Low chlorine => caution', output: 'caution', strength: 0.62 }] },
+        ml: {
+          trained: true,
+          modelType: 'RandomForest',
+          probability: 0.63,
+          score: 63,
+          label: 'Safe',
+          accuracy: 87.5,
+          trainedAt: new Date().toISOString(),
+          samples: 350,
+          trees: 60,
+          maxDepth: 8,
+          minLeaf: 4,
+          sampleRate: 0.85,
+          maxFeatures: 3,
+          trainSource: 'csv-file',
+          csvPath: 'backend/data/water_potability.csv',
+          featureImportances: {
+            ph: 0.12,
+            turbidity: 0.24,
+            tds: 0.22,
+            chlorine: 0.1,
+            temperature: 0.08,
+            wqi: 0.24
+          }
+        },
+        hybrid: { score: 67.2, label: 'Caution', recommendedUse: 'Use after treatment (boiling/UV/chlorination)', binaryClass: 0 },
+        diseaseRisk: {
+          overall: 'Medium',
+          conditions: [{ name: 'Microbial Gastroenteritis', likelihood: 'medium', trigger: 'Low disinfectant residual', diseases: ['Acute gastroenteritis', 'Typhoid'] }],
+          recommendations: ['Increase residual chlorine to 0.2-1.0 mg/L after contact time validation.']
+        }
       },
       demand: {
         current: 2.47,
@@ -390,6 +518,57 @@ class AquaSyncApp {
     } catch (error) {
       console.error('Forecast model run failed:', error);
       alert('Forecast model run failed; see console for details.');
+    }
+  }
+
+  async trainPotabilityFromCsv() {
+    const treesInput = document.getElementById('rf-trees');
+    const depthInput = document.getElementById('rf-depth');
+    const leafInput = document.getElementById('rf-min-leaf');
+    const sampleRateInput = document.getElementById('rf-sample-rate');
+    const featureInput = document.getElementById('rf-max-features');
+
+    const trees = parseInt(treesInput?.value, 10) || 60;
+    const maxDepth = parseInt(depthInput?.value, 10) || 8;
+    const minLeaf = parseInt(leafInput?.value, 10) || 4;
+    const sampleRate = parseFloat(sampleRateInput?.value) || 0.85;
+    const maxFeatures = parseInt(featureInput?.value, 10) || 3;
+
+    try {
+      this.showNotification('Training Random Forest from CSV... please wait', 'info');
+
+      const res = await fetch(`${API_URL}/water-potability/train`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          useCsv: true,
+          csvPath: 'data/water_potability.csv',
+          trees,
+          maxDepth,
+          minLeaf,
+          sampleRate,
+          maxFeatures
+        })
+      });
+
+      const payload = await res.json();
+      if (!res.ok || !payload.success) {
+        throw new Error(payload.error || payload.message || `HTTP ${res.status}`);
+      }
+
+      if (payload.currentEvaluation) {
+        this.data.waterPotability = payload.currentEvaluation;
+      }
+
+      this.render();
+      this.showNotification(
+        `RF trained from CSV. Accuracy: ${payload.model?.accuracy ?? 'N/A'}% | Samples: ${payload.model?.samples ?? 'N/A'}`,
+        'success'
+      );
+    } catch (error) {
+      console.error('Potability CSV training failed:', error);
+      this.showNotification('Potability training failed. Check backend/logs.', 'error');
+      alert(`Failed to train potability model from CSV: ${error.message}`);
     }
   }
 
@@ -1212,6 +1391,24 @@ class AquaSyncApp {
 
   renderQuality() {
     const { waterQuality, zoneQuality } = this.data;
+    const potability = this.data.waterPotability || this.buildPotabilityFallbackFromWaterQuality(waterQuality);
+    const hybrid = potability.hybrid || {};
+    const fuzzy = potability.fuzzy || {};
+    const ml = potability.ml || {};
+    const diseaseRisk = potability.diseaseRisk || {};
+    const ranges = Array.isArray(potability.ranges) ? potability.ranges : [];
+    const highSeverityCount = ranges.filter((r) => r.severity === 'high').length;
+    const outOfRangeCount = ranges.filter((r) => r.status === 'out_of_range').length;
+    const potabilityBadge = (hybrid.label || 'Unknown').toLowerCase() === 'safe'
+      ? 'badge-green'
+      : (hybrid.label || 'Unknown').toLowerCase() === 'unsafe'
+        ? 'badge-red'
+        : 'badge-amber';
+    const diseaseBadge = (diseaseRisk.overall || 'Low').toLowerCase() === 'high'
+      ? 'badge-red'
+      : (diseaseRisk.overall || 'Low').toLowerCase() === 'medium'
+        ? 'badge-amber'
+        : 'badge-green';
     
     return `
       <div class="kpi-row">
@@ -1261,6 +1458,80 @@ class AquaSyncApp {
           <div class="kpi-label">Dissolved O₂</div>
           <div class="kpi-value">8.4<span style="font-size:14px;font-weight:500;color:var(--text-3)"> mg/L</span></div>
           <div class="kpi-sub" style="color:var(--green)">Moderate 7 mg/L</div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-bottom:16px;">
+        <div class="panel-header" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+          <div class="panel-title">🧠 Water Potability Intelligence</div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <span class="badge ${potabilityBadge}">${hybrid.label || 'Unknown'}</span>
+            <span class="badge ${diseaseBadge}">Disease Risk: ${diseaseRisk.overall || 'Low'}</span>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div class="kpi-row" style="grid-template-columns:repeat(4,minmax(140px,1fr));gap:10px;margin-bottom:12px;">
+            <div class="kpi" style="padding:12px;">
+              <div class="kpi-label">Hybrid Potability Score</div>
+              <div class="kpi-value">${hybrid.score ?? '--'}</div>
+              <div class="kpi-sub">Class: ${hybrid.binaryClass === 1 ? '1 (Potable)' : '0 (Non-potable)'}</div>
+            </div>
+            <div class="kpi" style="padding:12px;">
+              <div class="kpi-label">Fuzzy (Mamdani)</div>
+              <div class="kpi-value">${fuzzy.score ?? '--'}</div>
+              <div class="kpi-sub">Confidence: ${fuzzy.confidence ?? '--'}</div>
+            </div>
+            <div class="kpi" style="padding:12px;">
+              <div class="kpi-label">ML Potability Score</div>
+              <div class="kpi-value">${ml.score ?? '--'}</div>
+              <div class="kpi-sub">Accuracy: ${ml.accuracy ?? '--'}${ml.accuracy ? '%' : ''}</div>
+            </div>
+            <div class="kpi" style="padding:12px;">
+              <div class="kpi-label">Out-of-Range Params</div>
+              <div class="kpi-value">${outOfRangeCount}</div>
+              <div class="kpi-sub">High severity: ${highSeverityCount}</div>
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1.2fr 1fr;gap:10px;">
+            <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:10px;">
+              <div style="font-size:12px;color:var(--text-3);margin-bottom:8px;">Range-Based Assessment</div>
+              ${ranges.length ? ranges.map((item) => `
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px;">
+                  <div>
+                    <strong>${item.label}</strong>
+                    <span style="color:var(--text-3);"> (${item.safeMin}-${item.safeMax} ${item.unit || ''})</span>
+                  </div>
+                  <div style="font-weight:700;color:${item.status === 'in_range' ? 'var(--green)' : 'var(--red)'};">
+                    ${item.value} ${item.unit || ''}
+                  </div>
+                </div>
+              `).join('') : '<div style="font-size:12px;color:var(--text-3);">No range data available.</div>'}
+            </div>
+
+            <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:10px;">
+              <div style="font-size:12px;color:var(--text-3);margin-bottom:8px;">Disease Signals & Recommendations</div>
+              ${(Array.isArray(diseaseRisk.conditions) && diseaseRisk.conditions.length)
+                ? diseaseRisk.conditions.map((condition) => `
+                  <div style="padding:6px 0;border-bottom:1px solid var(--border);">
+                    <div style="font-size:12px;font-weight:700;">${condition.name}</div>
+                    <div style="font-size:11px;color:var(--text-3);">Likelihood: ${condition.likelihood} · Trigger: ${condition.trigger}</div>
+                    <div style="font-size:11px;color:var(--text-3);">${(condition.diseases || []).join(', ')}</div>
+                  </div>
+                `).join('')
+                : '<div style="font-size:12px;color:var(--green);">No disease trigger detected for current ranges.</div>'}
+              <div style="margin-top:8px;font-size:11px;color:var(--text-3);line-height:1.5;">
+                ${(Array.isArray(diseaseRisk.recommendations) && diseaseRisk.recommendations.length)
+                  ? diseaseRisk.recommendations.slice(0, 2).map((tip) => `• ${tip}`).join('<br>')
+                  : '• Continue routine monitoring and periodic treatment checks.'}
+              </div>
+            </div>
+          </div>
+
+          <div style="margin-top:10px;font-size:11px;color:var(--text-3);">
+            Recommended Use: <strong>${hybrid.recommendedUse || 'No recommendation available'}</strong>
+            ${potability.updatedAt ? ` · Updated: ${new Date(potability.updatedAt).toLocaleString()}` : ''}
+          </div>
         </div>
       </div>
 
@@ -2571,6 +2842,11 @@ class AquaSyncApp {
 
   renderThresholds() {
     const { thresholds } = this.data;
+    const ml = this.data?.waterPotability?.ml || {};
+    const featureImportances = ml.featureImportances || {};
+    const topFeatures = Object.entries(featureImportances)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3);
     
     return `
       <div class="panel">
@@ -2615,6 +2891,82 @@ class AquaSyncApp {
           <div class="threshold-actions">
             <button class="btn btn-primary" onclick="app.saveAllThresholds()">💾 Save Thresholds</button>
             <button class="btn btn-ghost" onclick="location.reload()">↺ Reset to Defaults</button>
+          </div>
+
+          <div class="panel" style="margin-top:16px;">
+            <div class="panel-header" style="align-items:flex-start;">
+              <div>
+                <div class="panel-title">🧠 Potability Training (Mamdani + Random Forest)</div>
+                <div style="font-size:12px;color:var(--text-3);margin-top:4px;line-height:1.5;">
+                  Fuzzy Mamdani logic remains rule-based and always active. This action retrains the Random Forest layer from <code>backend/data/water_potability.csv</code>.
+                </div>
+              </div>
+              <span class="badge badge-blue">CSV MODE</span>
+            </div>
+            <div class="panel-body" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;">
+              <div>
+                <div style="font-size:11px;color:var(--text-3);margin-bottom:4px;">Trees</div>
+                <input id="rf-trees" type="number" min="10" max="120" value="60" class="threshold-input" />
+              </div>
+              <div>
+                <div style="font-size:11px;color:var(--text-3);margin-bottom:4px;">Max Depth</div>
+                <input id="rf-depth" type="number" min="2" max="14" value="8" class="threshold-input" />
+              </div>
+              <div>
+                <div style="font-size:11px;color:var(--text-3);margin-bottom:4px;">Min Leaf</div>
+                <input id="rf-min-leaf" type="number" min="1" max="25" value="4" class="threshold-input" />
+              </div>
+              <div>
+                <div style="font-size:11px;color:var(--text-3);margin-bottom:4px;">Sample Rate</div>
+                <input id="rf-sample-rate" type="number" min="0.4" max="1" step="0.05" value="0.85" class="threshold-input" />
+              </div>
+              <div>
+                <div style="font-size:11px;color:var(--text-3);margin-bottom:4px;">Max Features</div>
+                <input id="rf-max-features" type="number" min="1" max="6" value="3" class="threshold-input" />
+              </div>
+            </div>
+            <div class="threshold-actions" style="margin-top:10px;">
+              <button class="btn btn-primary" onclick="app.trainPotabilityFromCsv()">🚀 Train Potability Model from CSV</button>
+            </div>
+
+            <div style="margin-top:12px;padding:10px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2);">
+              <div style="font-size:12px;font-weight:700;margin-bottom:8px;color:var(--text-2);">Model Training Status (visible dashboard data)</div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;">
+                <div class="param-card">
+                  <div class="param-name">Model</div>
+                  <div class="param-val">${ml.modelType || 'RandomForest'}</div>
+                </div>
+                <div class="param-card">
+                  <div class="param-name">Training Source</div>
+                  <div class="param-val">${ml.trainSource || 'Not trained yet'}</div>
+                </div>
+                <div class="param-card">
+                  <div class="param-name">Samples</div>
+                  <div class="param-val">${ml.samples ?? '--'}</div>
+                </div>
+                <div class="param-card">
+                  <div class="param-name">Accuracy</div>
+                  <div class="param-val">${ml.accuracy ?? '--'}${ml.accuracy ? '%' : ''}</div>
+                </div>
+                <div class="param-card">
+                  <div class="param-name">Trained At</div>
+                  <div class="param-val" style="font-size:12px;">${ml.trainedAt ? new Date(ml.trainedAt).toLocaleString() : 'Not trained'}</div>
+                </div>
+                <div class="param-card">
+                  <div class="param-name">CSV Path</div>
+                  <div class="param-val" style="font-size:12px;word-break:break-word;">${ml.csvPath || 'backend/data/water_potability.csv'}</div>
+                </div>
+              </div>
+              <div style="margin-top:8px;font-size:11px;color:var(--text-3);line-height:1.6;">
+                RF Params: trees=${ml.trees ?? '--'}, depth=${ml.maxDepth ?? '--'}, minLeaf=${ml.minLeaf ?? '--'}, sampleRate=${ml.sampleRate ?? '--'}, maxFeatures=${ml.maxFeatures ?? '--'}
+              </div>
+              <div style="margin-top:6px;font-size:11px;color:var(--text-3);line-height:1.6;">
+                Top Feature Importances:
+                ${topFeatures.length
+                  ? topFeatures.map(([name, value]) => `${name}=${(value * 100).toFixed(1)}%`).join(' | ')
+                  : 'Not available yet'}
+              </div>
+            </div>
           </div>
         </div>
       </div>

@@ -28,6 +28,49 @@ let sensorData = {
     temperature: 24.5,
     flowRate: 12.5 // L/min from flow sensor
   },
+  waterPotability: {
+    updatedAt: new Date().toISOString(),
+    inputReadings: {
+      ph: 7.2,
+      turbidity: 2.1,
+      tds: 145,
+      chlorine: 0.8,
+      temperature: 24.5,
+      wqi: 87.4
+    },
+    ranges: [],
+    fuzzy: {
+      method: 'Mamdani',
+      score: 82,
+      label: 'Safe',
+      confidence: 0.78,
+      rulesFired: []
+    },
+    ml: {
+      trained: false,
+      probability: null,
+      score: null,
+      label: 'Model not trained',
+      accuracy: null,
+      trainedAt: null,
+      samples: 0
+    },
+    hybrid: {
+      score: 82,
+      label: 'Safe',
+      recommendedUse: 'Direct drinking',
+      binaryClass: 1
+    },
+    diseaseRisk: {
+      overall: 'Low',
+      conditions: [],
+      recommendations: []
+    },
+    modelMeta: {
+      version: 'potability-v1',
+      features: ['ph', 'turbidity', 'tds', 'chlorine', 'temperature', 'wqi']
+    }
+  },
   demand: {
     current: 2.47,
     peak: 3.2,
@@ -315,6 +358,29 @@ const THINGSPEAK_POLL_SECONDS = Math.max(5, Number(process.env.THINGSPEAK_POLL_S
 
 let dbConnected = false;
 
+const POTABILITY_FEATURES = ['ph', 'turbidity', 'tds', 'chlorine', 'temperature', 'wqi'];
+let potabilityModelState = {
+  trained: false,
+  modelType: 'RandomForest',
+  forest: [],
+  featureImportances: POTABILITY_FEATURES.reduce((acc, feature) => {
+    acc[feature] = 0;
+    return acc;
+  }, {}),
+  accuracy: null,
+  samples: 0,
+  trees: 0,
+  maxDepth: 0,
+  minLeaf: 0,
+  sampleRate: 0,
+  maxFeatures: 0,
+  trainedAt: null,
+  lastLoss: null,
+  oobEstimate: null,
+  trainSource: null,
+  csvPath: null
+};
+
 const thingspeakStatus = {
   enabled: THINGSPEAK_ENABLED,
   live: false,
@@ -331,6 +397,784 @@ const thingspeakStatus = {
 function toNumber(value) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function triangleMembership(x, a, b, c) {
+  if (x <= a || x >= c) return 0;
+  if (x === b) return 1;
+  if (x < b) return (x - a) / (b - a);
+  return (c - x) / (c - b);
+}
+
+function trapezoidMembership(x, a, b, c, d) {
+  if (x <= a || x >= d) return 0;
+  if (x >= b && x <= c) return 1;
+  if (x > a && x < b) return (x - a) / (b - a);
+  return (d - x) / (d - c);
+}
+
+function sanitizePotabilityReadings(input = {}) {
+  const current = sensorData.waterQuality || {};
+  const safe = {
+    ph: toNumber(input.ph) ?? toNumber(current.ph) ?? 7,
+    turbidity: toNumber(input.turbidity) ?? toNumber(current.turbidity) ?? 2,
+    tds: toNumber(input.tds) ?? toNumber(current.tds) ?? 150,
+    chlorine: toNumber(input.chlorine) ?? toNumber(current.chlorine) ?? 0.8,
+    temperature: toNumber(input.temperature) ?? toNumber(current.temperature) ?? 25,
+    wqi: toNumber(input.wqi) ?? toNumber(current.wqi) ?? 80
+  };
+
+  safe.ph = clamp(safe.ph, 0, 14);
+  safe.turbidity = clamp(safe.turbidity, 0, 20);
+  safe.tds = clamp(safe.tds, 0, 2000);
+  safe.chlorine = clamp(safe.chlorine, 0, 8);
+  safe.temperature = clamp(safe.temperature, 0, 60);
+  safe.wqi = clamp(safe.wqi, 0, 100);
+
+  return safe;
+}
+
+function buildRangeAssessment(readings) {
+  const ranges = [
+    { key: 'ph', label: 'pH', value: readings.ph, safeMin: 6.5, safeMax: 8.5, unit: '' },
+    { key: 'turbidity', label: 'Turbidity', value: readings.turbidity, safeMin: 0, safeMax: 4, unit: 'NTU' },
+    { key: 'tds', label: 'TDS', value: readings.tds, safeMin: 50, safeMax: 500, unit: 'ppm' },
+    { key: 'chlorine', label: 'Chlorine Residual', value: readings.chlorine, safeMin: 0.2, safeMax: 2.0, unit: 'mg/L' },
+    { key: 'temperature', label: 'Temperature', value: readings.temperature, safeMin: 18, safeMax: 32, unit: 'deg C' },
+    { key: 'wqi', label: 'WQI', value: readings.wqi, safeMin: 70, safeMax: 100, unit: '' }
+  ];
+
+  return ranges.map((item) => {
+    const inRange = item.value >= item.safeMin && item.value <= item.safeMax;
+    return {
+      ...item,
+      status: inRange ? 'in_range' : 'out_of_range',
+      severity: inRange ? 'low' : ((item.value < item.safeMin * 0.8 || item.value > item.safeMax * 1.2) ? 'high' : 'medium')
+    };
+  });
+}
+
+function computeInputMemberships(readings) {
+  return {
+    ph: {
+      acidic: trapezoidMembership(readings.ph, 0, 0, 6.3, 7.0),
+      neutral: triangleMembership(readings.ph, 6.5, 7.2, 8.0),
+      alkaline: trapezoidMembership(readings.ph, 7.4, 8.3, 14, 14)
+    },
+    turbidity: {
+      low: trapezoidMembership(readings.turbidity, 0, 0, 1.5, 3.0),
+      medium: triangleMembership(readings.turbidity, 2.0, 4.0, 6.5),
+      high: trapezoidMembership(readings.turbidity, 4.5, 7.0, 20, 20)
+    },
+    tds: {
+      low: trapezoidMembership(readings.tds, 0, 0, 180, 320),
+      medium: triangleMembership(readings.tds, 220, 450, 750),
+      high: trapezoidMembership(readings.tds, 650, 900, 2000, 2000)
+    },
+    chlorine: {
+      low: trapezoidMembership(readings.chlorine, 0, 0, 0.2, 0.5),
+      optimal: triangleMembership(readings.chlorine, 0.2, 0.9, 1.8),
+      high: trapezoidMembership(readings.chlorine, 1.5, 2.2, 8, 8)
+    },
+    temperature: {
+      cool: trapezoidMembership(readings.temperature, 0, 0, 15, 21),
+      normal: triangleMembership(readings.temperature, 18, 24, 32),
+      hot: trapezoidMembership(readings.temperature, 30, 36, 60, 60)
+    },
+    wqi: {
+      poor: trapezoidMembership(readings.wqi, 0, 0, 45, 60),
+      fair: triangleMembership(readings.wqi, 50, 67, 82),
+      good: trapezoidMembership(readings.wqi, 75, 85, 100, 100)
+    }
+  };
+}
+
+function runMamdaniPotability(readings) {
+  const memberships = computeInputMemberships(readings);
+  const outputs = { unsafe: 0, caution: 0, safe: 0 };
+  const firedRules = [];
+
+  const rules = [
+    {
+      id: 'R1',
+      label: 'Neutral pH + low turbidity + low TDS + optimal chlorine => safe',
+      output: 'safe',
+      strength: Math.min(
+        memberships.ph.neutral,
+        memberships.turbidity.low,
+        memberships.tds.low,
+        memberships.chlorine.optimal
+      )
+    },
+    {
+      id: 'R2',
+      label: 'High turbidity => unsafe',
+      output: 'unsafe',
+      strength: memberships.turbidity.high
+    },
+    {
+      id: 'R3',
+      label: 'High TDS => unsafe',
+      output: 'unsafe',
+      strength: memberships.tds.high
+    },
+    {
+      id: 'R4',
+      label: 'Low chlorine + high temperature => unsafe',
+      output: 'unsafe',
+      strength: Math.min(memberships.chlorine.low, memberships.temperature.hot)
+    },
+    {
+      id: 'R5',
+      label: 'Low chlorine => caution',
+      output: 'caution',
+      strength: memberships.chlorine.low
+    },
+    {
+      id: 'R6',
+      label: 'High chlorine => caution',
+      output: 'caution',
+      strength: memberships.chlorine.high
+    },
+    {
+      id: 'R7',
+      label: 'Acidic or alkaline pH => caution',
+      output: 'caution',
+      strength: Math.max(memberships.ph.acidic, memberships.ph.alkaline)
+    },
+    {
+      id: 'R8',
+      label: 'Good WQI + normal temperature => safe',
+      output: 'safe',
+      strength: Math.min(memberships.wqi.good, memberships.temperature.normal)
+    },
+    {
+      id: 'R9',
+      label: 'Poor WQI => unsafe',
+      output: 'unsafe',
+      strength: memberships.wqi.poor
+    }
+  ];
+
+  rules.forEach((rule) => {
+    if (rule.strength <= 0) return;
+    outputs[rule.output] = Math.max(outputs[rule.output], rule.strength);
+    firedRules.push({
+      id: rule.id,
+      rule: rule.label,
+      output: rule.output,
+      strength: Number(rule.strength.toFixed(3))
+    });
+  });
+
+  const unsafeMF = (x) => trapezoidMembership(x, 0, 0, 30, 50);
+  const cautionMF = (x) => triangleMembership(x, 40, 58, 76);
+  const safeMF = (x) => trapezoidMembership(x, 68, 82, 100, 100);
+
+  let numerator = 0;
+  let denominator = 0;
+  for (let x = 0; x <= 100; x += 1) {
+    const muUnsafe = Math.min(outputs.unsafe, unsafeMF(x));
+    const muCaution = Math.min(outputs.caution, cautionMF(x));
+    const muSafe = Math.min(outputs.safe, safeMF(x));
+    const mu = Math.max(muUnsafe, muCaution, muSafe);
+    numerator += x * mu;
+    denominator += mu;
+  }
+
+  const score = Number((denominator === 0 ? 50 : (numerator / denominator)).toFixed(2));
+  const confidence = Number(Math.max(outputs.unsafe, outputs.caution, outputs.safe).toFixed(3));
+
+  let label = 'Moderate';
+  if (score >= 75) label = 'Safe';
+  else if (score < 55) label = 'Unsafe';
+
+  return {
+    score,
+    label,
+    confidence,
+    outputMemberships: {
+      unsafe: Number(outputs.unsafe.toFixed(3)),
+      caution: Number(outputs.caution.toFixed(3)),
+      safe: Number(outputs.safe.toFixed(3))
+    },
+    memberships,
+    rulesFired: firedRules.sort((a, b) => b.strength - a.strength).slice(0, 8)
+  };
+}
+
+function normalizePotabilityFeatures(readings) {
+  const safe = sanitizePotabilityReadings(readings);
+  const chlorineRisk = safe.chlorine < 0.2
+    ? (0.2 - safe.chlorine) / 0.2
+    : safe.chlorine > 2
+      ? (safe.chlorine - 2) / 2
+      : 0;
+
+  return [
+    clamp(Math.abs(safe.ph - 7) / 3, 0, 1),
+    clamp((safe.turbidity - 1) / 8, 0, 1),
+    clamp((safe.tds - 120) / 900, 0, 1),
+    clamp(chlorineRisk, 0, 1),
+    clamp(Math.abs(safe.temperature - 25) / 20, 0, 1),
+    clamp((100 - safe.wqi) / 60, 0, 1)
+  ];
+}
+
+function getMajorityLabel(rows) {
+  const ones = rows.reduce((sum, row) => sum + (row.label === 1 ? 1 : 0), 0);
+  return ones >= rows.length / 2 ? 1 : 0;
+}
+
+function getPositiveProbability(rows) {
+  if (!rows.length) return 0.5;
+  const ones = rows.reduce((sum, row) => sum + (row.label === 1 ? 1 : 0), 0);
+  return ones / rows.length;
+}
+
+function giniImpurity(rows) {
+  if (!rows.length) return 0;
+  const p = getPositiveProbability(rows);
+  return 1 - (p * p + (1 - p) * (1 - p));
+}
+
+function splitRows(rows, featureIndex, threshold) {
+  const left = [];
+  const right = [];
+  rows.forEach((row) => {
+    if (row.features[featureIndex] <= threshold) left.push(row);
+    else right.push(row);
+  });
+  return { left, right };
+}
+
+function randomFeatureSubset(total, count) {
+  const indices = [...Array(total).keys()];
+  for (let i = indices.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [indices[i], indices[j]] = [indices[j], indices[i]];
+  }
+  return indices.slice(0, Math.max(1, Math.min(count, total)));
+}
+
+function findBestSplit(rows, featureIndices, minLeaf) {
+  const parentGini = giniImpurity(rows);
+  let best = {
+    gain: 0,
+    featureIndex: null,
+    threshold: null,
+    left: null,
+    right: null
+  };
+
+  featureIndices.forEach((featureIndex) => {
+    const uniqueValues = [...new Set(rows.map((row) => Number(row.features[featureIndex].toFixed(4))))].sort((a, b) => a - b);
+    if (uniqueValues.length < 2) return;
+
+    for (let i = 0; i < uniqueValues.length - 1; i += 1) {
+      const threshold = (uniqueValues[i] + uniqueValues[i + 1]) / 2;
+      const { left, right } = splitRows(rows, featureIndex, threshold);
+      if (left.length < minLeaf || right.length < minLeaf) continue;
+
+      const weightedGini = (left.length / rows.length) * giniImpurity(left) + (right.length / rows.length) * giniImpurity(right);
+      const gain = parentGini - weightedGini;
+
+      if (gain > best.gain) {
+        best = { gain, featureIndex, threshold, left, right };
+      }
+    }
+  });
+
+  return best;
+}
+
+function buildDecisionTree(rows, options, depth = 0, splitUsage = {}) {
+  const { maxDepth, minLeaf, maxFeaturesPerSplit } = options;
+  const positiveProbability = getPositiveProbability(rows);
+  const label = positiveProbability >= 0.5 ? 1 : 0;
+
+  if (depth >= maxDepth || rows.length <= minLeaf * 2 || giniImpurity(rows) < 1e-4) {
+    return {
+      type: 'leaf',
+      label,
+      probability: Number(positiveProbability.toFixed(6)),
+      samples: rows.length
+    };
+  }
+
+  const featureIndices = randomFeatureSubset(POTABILITY_FEATURES.length, maxFeaturesPerSplit);
+  const bestSplit = findBestSplit(rows, featureIndices, minLeaf);
+
+  if (bestSplit.featureIndex === null || bestSplit.gain <= 1e-6) {
+    return {
+      type: 'leaf',
+      label,
+      probability: Number(positiveProbability.toFixed(6)),
+      samples: rows.length
+    };
+  }
+
+  const featureName = POTABILITY_FEATURES[bestSplit.featureIndex];
+  splitUsage[featureName] = (splitUsage[featureName] || 0) + 1;
+
+  return {
+    type: 'node',
+    featureIndex: bestSplit.featureIndex,
+    featureName,
+    threshold: bestSplit.threshold,
+    gain: Number(bestSplit.gain.toFixed(6)),
+    left: buildDecisionTree(bestSplit.left, options, depth + 1, splitUsage),
+    right: buildDecisionTree(bestSplit.right, options, depth + 1, splitUsage)
+  };
+}
+
+function bootstrapSample(rows, sampleSize) {
+  const sampled = [];
+  for (let i = 0; i < sampleSize; i += 1) {
+    sampled.push(rows[Math.floor(Math.random() * rows.length)]);
+  }
+  return sampled;
+}
+
+function predictTreeProbability(tree, features) {
+  let node = tree;
+  while (node && node.type === 'node') {
+    node = features[node.featureIndex] <= node.threshold ? node.left : node.right;
+  }
+  return node?.probability ?? 0.5;
+}
+
+function predictForestProbability(forest, features) {
+  if (!forest.length) return 0.5;
+  const avg = forest.reduce((sum, tree) => sum + predictTreeProbability(tree, features), 0) / forest.length;
+  return avg;
+}
+
+function predictMlPotability(readings) {
+  if (!potabilityModelState.trained) {
+    return {
+      trained: false,
+      probability: null,
+      score: null,
+      label: 'Model not trained',
+      accuracy: null,
+      trainedAt: null,
+      samples: 0
+    };
+  }
+
+  const features = normalizePotabilityFeatures(readings);
+  const probability = predictForestProbability(potabilityModelState.forest, features);
+  const score = Number((probability * 100).toFixed(2));
+
+  return {
+    trained: true,
+    modelType: 'RandomForest',
+    probability: Number(probability.toFixed(4)),
+    score,
+    label: probability >= 0.5 ? 'Safe' : 'Unsafe',
+    accuracy: potabilityModelState.accuracy,
+    trainedAt: potabilityModelState.trainedAt,
+    samples: potabilityModelState.samples,
+    trees: potabilityModelState.trees,
+    maxDepth: potabilityModelState.maxDepth,
+    minLeaf: potabilityModelState.minLeaf,
+    sampleRate: potabilityModelState.sampleRate,
+    maxFeatures: potabilityModelState.maxFeatures,
+    lastLoss: potabilityModelState.lastLoss,
+    oobEstimate: potabilityModelState.oobEstimate,
+    featureImportances: potabilityModelState.featureImportances,
+    trainSource: potabilityModelState.trainSource,
+    csvPath: potabilityModelState.csvPath
+  };
+}
+
+function classifyHybridPotability(score) {
+  if (score >= 75) {
+    return {
+      label: 'Safe',
+      recommendedUse: 'Direct drinking',
+      binaryClass: 1
+    };
+  }
+
+  if (score >= 55) {
+    return {
+      label: 'Caution',
+      recommendedUse: 'Use after treatment (boiling/UV/chlorination)',
+      binaryClass: 0
+    };
+  }
+
+  return {
+    label: 'Unsafe',
+    recommendedUse: 'Do not drink until treated',
+    binaryClass: 0
+  };
+}
+
+function computeDiseaseRisk(readings, ranges) {
+  const conditions = [];
+
+  if (readings.turbidity > 4 || readings.chlorine < 0.2) {
+    const likelihood = readings.turbidity > 6 || readings.chlorine < 0.1 ? 'high' : 'medium';
+    conditions.push({
+      name: 'Microbial Gastroenteritis',
+      likelihood,
+      trigger: 'High turbidity and/or low disinfectant residual',
+      diseases: ['Acute gastroenteritis', 'Cholera', 'Typhoid']
+    });
+  }
+
+  if (readings.tds > 500) {
+    const likelihood = readings.tds > 900 ? 'high' : 'medium';
+    conditions.push({
+      name: 'Mineral/Salinity Stress',
+      likelihood,
+      trigger: 'Elevated TDS',
+      diseases: ['Kidney stone risk', 'GI irritation in sensitive groups']
+    });
+  }
+
+  if (readings.ph < 6.5 || readings.ph > 8.5) {
+    const likelihood = readings.ph < 6.0 || readings.ph > 9.0 ? 'high' : 'medium';
+    conditions.push({
+      name: 'pH Imbalance Exposure',
+      likelihood,
+      trigger: 'pH out of acceptable range',
+      diseases: ['Skin irritation', 'Eye irritation']
+    });
+  }
+
+  if (readings.temperature > 32 && readings.chlorine < 0.3) {
+    conditions.push({
+      name: 'Warm Water Pathogen Growth',
+      likelihood: 'medium',
+      trigger: 'Warm water with low residual chlorine',
+      diseases: ['Legionella risk', 'Biofilm growth risk']
+    });
+  }
+
+  const hasHigh = conditions.some((c) => c.likelihood === 'high');
+  const hasMedium = conditions.some((c) => c.likelihood === 'medium');
+
+  const recommendations = [];
+  if (ranges.some((r) => r.status === 'out_of_range')) {
+    recommendations.push('Apply treatment for out-of-range parameters before drinking use.');
+  }
+  if (readings.turbidity > 4) {
+    recommendations.push('Use coagulation + filtration to reduce turbidity below 4 NTU.');
+  }
+  if (readings.chlorine < 0.2) {
+    recommendations.push('Increase residual chlorine to 0.2-1.0 mg/L after contact time validation.');
+  }
+  if (readings.tds > 500) {
+    recommendations.push('Use RO or blending to reduce TDS for potable distribution.');
+  }
+  if (conditions.length === 0) {
+    recommendations.push('No immediate disease trigger detected. Continue routine monitoring.');
+  }
+
+  return {
+    overall: hasHigh ? 'High' : (hasMedium ? 'Medium' : 'Low'),
+    conditions,
+    recommendations
+  };
+}
+
+function evaluateWaterPotability(inputReadings = {}) {
+  const readings = sanitizePotabilityReadings(inputReadings);
+  const ranges = buildRangeAssessment(readings);
+  const fuzzy = runMamdaniPotability(readings);
+  const ml = predictMlPotability(readings);
+  const combinedScore = ml.trained
+    ? Number((fuzzy.score * 0.65 + ml.score * 0.35).toFixed(2))
+    : fuzzy.score;
+  const hybrid = {
+    score: combinedScore,
+    ...classifyHybridPotability(combinedScore)
+  };
+  const diseaseRisk = computeDiseaseRisk(readings, ranges);
+
+  return {
+    updatedAt: new Date().toISOString(),
+    inputReadings: readings,
+    ranges,
+    fuzzy: {
+      method: 'Mamdani',
+      score: fuzzy.score,
+      label: fuzzy.label,
+      confidence: fuzzy.confidence,
+      outputMemberships: fuzzy.outputMemberships,
+      rulesFired: fuzzy.rulesFired
+    },
+    ml,
+    hybrid,
+    diseaseRisk,
+    modelMeta: {
+      version: 'potability-v1',
+      features: POTABILITY_FEATURES
+    }
+  };
+}
+
+function generateSyntheticPotabilityDataset(sampleCount = 350) {
+  const samples = [];
+  for (let i = 0; i < sampleCount; i += 1) {
+    const ph = Number((5.2 + Math.random() * 4.2).toFixed(2));
+    const turbidity = Number((Math.random() * 9).toFixed(2));
+    const tds = Math.round(80 + Math.random() * 1100);
+    const chlorine = Number((Math.random() * 2.8).toFixed(2));
+    const temperature = Number((14 + Math.random() * 24).toFixed(1));
+    const wqi = Number(clamp(98 - Math.abs(ph - 7) * 10 - turbidity * 4 - Math.max(0, tds - 120) / 18 - Math.abs(chlorine - 1) * 8, 35, 99).toFixed(1));
+
+    const readings = { ph, turbidity, tds, chlorine, temperature, wqi };
+    const fuzzy = runMamdaniPotability(readings);
+    let label = fuzzy.score >= 67 ? 1 : 0;
+
+    if (fuzzy.score >= 50 && fuzzy.score < 67) {
+      label = Math.random() < 0.4 ? 1 : 0;
+    }
+
+    samples.push({ readings, label });
+  }
+  return samples;
+}
+
+function parseCsvLine(line) {
+  const values = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i += 1) {
+    const char = line[i];
+
+    if (char === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (char === ',' && !inQuotes) {
+      values.push(current);
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+
+  values.push(current);
+  return values.map((v) => v.trim());
+}
+
+function loadPotabilityDatasetFromCsv(csvPathInput) {
+  const defaultPath = path.join(__dirname, 'data', 'water_potability.csv');
+  const candidatePath = csvPathInput
+    ? (path.isAbsolute(csvPathInput)
+      ? csvPathInput
+      : path.join(__dirname, csvPathInput))
+    : defaultPath;
+
+  if (!fs.existsSync(candidatePath)) {
+    throw new Error(`CSV dataset not found at: ${candidatePath}`);
+  }
+
+  const raw = fs.readFileSync(candidatePath, 'utf8');
+  const lines = raw.split(/\r?\n/).filter((line) => line.trim().length > 0);
+  if (lines.length < 2) {
+    throw new Error('CSV dataset is empty or missing rows.');
+  }
+
+  const headers = parseCsvLine(lines[0]).map((h) => h.toLowerCase());
+  const idx = {
+    ph: headers.indexOf('ph'),
+    solids: headers.indexOf('solids'),
+    chloramines: headers.indexOf('chloramines'),
+    turbidity: headers.indexOf('turbidity'),
+    potability: headers.indexOf('potability')
+  };
+
+  if (idx.ph === -1 || idx.solids === -1 || idx.chloramines === -1 || idx.turbidity === -1 || idx.potability === -1) {
+    throw new Error('CSV must include columns: ph, Solids, Chloramines, Turbidity, Potability');
+  }
+
+  const rows = [];
+  for (let i = 1; i < lines.length; i += 1) {
+    const cols = parseCsvLine(lines[i]);
+    const label = Number(cols[idx.potability]);
+    if (!Number.isFinite(label)) continue;
+
+    const ph = toNumber(cols[idx.ph]);
+    const solids = toNumber(cols[idx.solids]);
+    const chloramines = toNumber(cols[idx.chloramines]);
+    const turbidity = toNumber(cols[idx.turbidity]);
+
+    if (ph === null || solids === null || chloramines === null || turbidity === null) {
+      continue;
+    }
+
+    // Map generic dataset columns into the dashboard potability feature space.
+    const tdsMapped = solids / 20;
+    const chlorineMapped = chloramines / 8;
+    const wqiEstimate = clamp(
+      98 - Math.abs(ph - 7) * 9 - Math.max(0, tdsMapped - 100) / 12 - Math.max(0, turbidity - 1) * 5 - Math.abs(chlorineMapped - 1) * 8,
+      35,
+      99
+    );
+
+    rows.push({
+      readings: {
+        ph,
+        turbidity,
+        tds: tdsMapped,
+        chlorine: chlorineMapped,
+        temperature: 25,
+        wqi: Number(wqiEstimate.toFixed(2))
+      },
+      label: label >= 0.5 ? 1 : 0
+    });
+  }
+
+  if (rows.length < 50) {
+    throw new Error(`CSV parsing produced too few usable rows (${rows.length}). Need at least 50.`);
+  }
+
+  return {
+    rows,
+    filePath: candidatePath,
+    totalRows: rows.length
+  };
+}
+
+function trainPotabilityModel(options = {}) {
+  const trees = Math.round(clamp(Number(options.trees) || 35, 10, 120));
+  const maxDepth = Math.round(clamp(Number(options.maxDepth) || 6, 2, 14));
+  const minLeaf = Math.round(clamp(Number(options.minLeaf) || 4, 1, 25));
+  const sampleRate = clamp(Number(options.sampleRate) || 0.85, 0.4, 1);
+  const maxFeatures = Math.round(clamp(Number(options.maxFeatures) || Math.ceil(Math.sqrt(POTABILITY_FEATURES.length)), 1, POTABILITY_FEATURES.length));
+  const providedDataset = Array.isArray(options.dataset) ? options.dataset : null;
+  const csvPath = typeof options.csvPath === 'string' ? options.csvPath : null;
+  let csvInfo = null;
+
+  if (!providedDataset && (options.useCsv === true || csvPath)) {
+    csvInfo = loadPotabilityDatasetFromCsv(csvPath);
+  }
+
+  const dataset = csvInfo
+    ? csvInfo.rows
+    : (providedDataset && providedDataset.length >= 50)
+    ? providedDataset
+        .map((row) => {
+          const readings = sanitizePotabilityReadings(row.readings || row.features || row);
+          const labelRaw = Number(row.label);
+          if (!Number.isFinite(labelRaw)) return null;
+          return {
+            readings,
+            label: labelRaw >= 0.5 ? 1 : 0
+          };
+        })
+        .filter(Boolean)
+      : generateSyntheticPotabilityDataset(350);
+
+  const splitIndex = Math.floor(dataset.length * 0.8);
+  const normalized = dataset.map((row) => ({
+    features: normalizePotabilityFeatures(row.readings),
+    label: row.label
+  }));
+
+  const trainSet = normalized.slice(0, splitIndex);
+  const testSet = normalized.slice(splitIndex);
+
+  const forest = [];
+  const splitUsage = POTABILITY_FEATURES.reduce((acc, feature) => {
+    acc[feature] = 0;
+    return acc;
+  }, {});
+
+  const sampleSize = Math.max(2, Math.floor(trainSet.length * sampleRate));
+  for (let i = 0; i < trees; i += 1) {
+    const boot = bootstrapSample(trainSet, sampleSize);
+    const tree = buildDecisionTree(
+      boot,
+      { maxDepth, minLeaf, maxFeaturesPerSplit: maxFeatures },
+      0,
+      splitUsage
+    );
+    forest.push(tree);
+  }
+
+  let correct = 0;
+  testSet.forEach(({ features, label }) => {
+    const pred = predictForestProbability(forest, features) >= 0.5 ? 1 : 0;
+    if (pred === label) correct += 1;
+  });
+
+  const accuracy = Number((((correct / Math.max(1, testSet.length)) * 100)).toFixed(2));
+
+  const totalSplits = Object.values(splitUsage).reduce((sum, value) => sum + value, 0);
+  const featureImportances = POTABILITY_FEATURES.reduce((acc, feature) => {
+    acc[feature] = totalSplits ? Number((splitUsage[feature] / totalSplits).toFixed(4)) : 0;
+    return acc;
+  }, {});
+
+  const logLoss = testSet.length
+    ? testSet.reduce((loss, row) => {
+        const prob = clamp(predictForestProbability(forest, row.features), 1e-9, 1 - 1e-9);
+        return loss - (row.label * Math.log(prob) + (1 - row.label) * Math.log(1 - prob));
+      }, 0) / testSet.length
+    : 0;
+
+  potabilityModelState = {
+    trained: true,
+    modelType: 'RandomForest',
+    forest,
+    featureImportances,
+    accuracy,
+    samples: dataset.length,
+    trees,
+    maxDepth,
+    minLeaf,
+    sampleRate,
+    maxFeatures,
+    trainedAt: new Date().toISOString(),
+    lastLoss: Number(logLoss.toFixed(6)),
+    oobEstimate: null,
+    trainSource: csvInfo
+      ? 'csv-file'
+      : ((providedDataset && providedDataset.length >= 50) ? 'user-dataset' : 'synthetic-dataset'),
+    csvPath: csvInfo ? csvInfo.filePath : null
+  };
+
+  return {
+    trained: true,
+    modelType: 'RandomForest',
+    samples: dataset.length,
+    trees,
+    maxDepth,
+    minLeaf,
+    sampleRate,
+    maxFeatures,
+    accuracy,
+    lastLoss: potabilityModelState.lastLoss,
+    featureImportances,
+    trainedAt: potabilityModelState.trainedAt,
+    source: csvInfo
+      ? 'csv-file'
+      : ((providedDataset && providedDataset.length >= 50) ? 'user-dataset' : 'synthetic-dataset'),
+    csvPath: csvInfo ? csvInfo.filePath : null
+  };
+}
+
+function refreshPotabilityForCurrentData() {
+  sensorData.waterPotability = evaluateWaterPotability(sensorData.waterQuality);
 }
 
 function updateThingSpeakStatus(partial = {}) {
@@ -363,6 +1207,7 @@ function applyThingSpeakFeed(feed) {
   const tds = Number(sensorData.waterQuality.tds);
   const wqiEstimate = 98 - Math.abs(ph - 7) * 8 - Math.max(0, tds - 100) / 12;
   sensorData.waterQuality.wqi = Number(Math.max(45, Math.min(99, wqiEstimate)).toFixed(1));
+  refreshPotabilityForCurrentData();
 
   updateThingSpeakStatus({
     live: true,
@@ -525,6 +1370,54 @@ app.get('/api/dashboard', (req, res) => {
 app.get('/api/water-quality', (req, res) => {
   res.json(sensorData.waterQuality);
 });
+
+app.get('/api/water-potability', (req, res) => {
+  res.json(sensorData.waterPotability);
+});
+
+// Alias route in case client uses the term "portability".
+app.get('/api/water-portability', (req, res) => {
+  res.json(sensorData.waterPotability);
+});
+
+app.post('/api/water-potability/evaluate', (req, res) => {
+  const evaluation = evaluateWaterPotability(req.body || {});
+  sensorData.waterPotability = evaluation;
+  persistDashboardState('water-potability-evaluate');
+  res.json(evaluation);
+});
+
+app.post('/api/water-portability/evaluate', (req, res) => {
+  const evaluation = evaluateWaterPotability(req.body || {});
+  sensorData.waterPotability = evaluation;
+  persistDashboardState('water-portability-evaluate');
+  res.json(evaluation);
+});
+
+function handlePotabilityTrain(req, res) {
+  try {
+    const summary = trainPotabilityModel(req.body || {});
+    refreshPotabilityForCurrentData();
+    persistDashboardState('water-potability-train');
+
+    res.json({
+      success: true,
+      message: 'Potability ML model trained successfully',
+      model: summary,
+      currentEvaluation: sensorData.waterPotability
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      error: error.message
+    });
+  }
+}
+
+app.post('/api/water-potability/train', handlePotabilityTrain);
+
+// Alias route in case client uses the term "portability".
+app.post('/api/water-portability/train', handlePotabilityTrain);
 
 app.get('/api/leaks', (req, res) => {
   res.json(sensorData.leaks);
@@ -1081,6 +1974,7 @@ app.post('/api/hardware/data', (req, res) => {
     if (targetPath && !Number.isNaN(parsedValue)) {
       const [section, key] = targetPath;
       sensorData[section][key] = parsedValue;
+      refreshPotabilityForCurrentData();
       persistDashboardState(`hardware-ingest-${sensor}`);
     }
 
@@ -1092,6 +1986,10 @@ app.post('/api/hardware/data', (req, res) => {
 });
 
 async function startServer() {
+  // Train once at startup so ML score is available immediately.
+  trainPotabilityModel();
+  refreshPotabilityForCurrentData();
+
   await connectToDatabase();
 
   updateThingSpeakStatus({
@@ -1148,6 +2046,8 @@ async function startServer() {
         sensorData.waterQuality.tds = Math.floor(140 + Math.random() * 10);
         sensorData.waterQuality.flowRate = Number((12 + Math.random() * 2).toFixed(2));
       }
+
+      refreshPotabilityForCurrentData();
 
       sensorData.demand.current = Number((2.4 + Math.random() * 0.3).toFixed(2));
 

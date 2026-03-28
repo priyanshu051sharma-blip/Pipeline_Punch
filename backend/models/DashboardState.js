@@ -17,6 +17,91 @@ const DashboardStateSchema = new mongoose.Schema({
     temperature: Number,
     flowRate: Number
   },
+  waterPotability: {
+    updatedAt: String,
+    inputReadings: {
+      ph: Number,
+      turbidity: Number,
+      tds: Number,
+      chlorine: Number,
+      temperature: Number,
+      wqi: Number
+    },
+    ranges: [{
+      key: String,
+      label: String,
+      value: Number,
+      safeMin: Number,
+      safeMax: Number,
+      unit: String,
+      status: String,
+      severity: String
+    }],
+    fuzzy: {
+      method: String,
+      score: Number,
+      label: String,
+      confidence: Number,
+      outputMemberships: {
+        unsafe: Number,
+        caution: Number,
+        safe: Number
+      },
+      rulesFired: [{
+        id: String,
+        rule: String,
+        output: String,
+        strength: Number
+      }]
+    },
+    ml: {
+      trained: Boolean,
+      modelType: String,
+      probability: Number,
+      score: Number,
+      label: String,
+      accuracy: Number,
+      trainedAt: String,
+      samples: Number,
+      trees: Number,
+      maxDepth: Number,
+      minLeaf: Number,
+      sampleRate: Number,
+      maxFeatures: Number,
+      lastLoss: Number,
+      oobEstimate: Number,
+      trainSource: String,
+      csvPath: String,
+      featureImportances: {
+        ph: Number,
+        turbidity: Number,
+        tds: Number,
+        chlorine: Number,
+        temperature: Number,
+        wqi: Number
+      }
+    },
+    hybrid: {
+      score: Number,
+      label: String,
+      recommendedUse: String,
+      binaryClass: Number
+    },
+    diseaseRisk: {
+      overall: String,
+      conditions: [{
+        name: String,
+        likelihood: String,
+        trigger: String,
+        diseases: [String]
+      }],
+      recommendations: [String]
+    },
+    modelMeta: {
+      version: String,
+      features: [String]
+    }
+  },
   demand: {
     current: Number,
     peak: Number,
