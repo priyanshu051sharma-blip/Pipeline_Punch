@@ -139,6 +139,23 @@ const DashboardStateSchema = new mongoose.Schema({
   network: {
     nodes: [{ id: String, x: Number, y: Number, status: String, pressure: Number, flow: Number }]
   },
+  integrations: {
+    thingspeak: {
+      enabled: Boolean,
+      live: Boolean,
+      channelId: String,
+      mappedFields: [String],
+      rawFields: {
+        field1: String,
+        field2: String
+      },
+      lastSync: String,
+      lastFeedAt: String,
+      lastEntryId: Number,
+      lastError: String,
+      source: String
+    }
+  },
   updatedAt: { type: Date, default: Date.now }
 });
 

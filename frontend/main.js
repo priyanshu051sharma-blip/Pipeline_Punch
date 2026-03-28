@@ -1045,6 +1045,16 @@ class AquaSyncApp {
 
   renderOverview() {
     const { waterQuality, demand, leaks, stp, pumps, network } = this.data;
+    const thingspeak = this.data?.integrations?.thingspeak;
+    const isThingSpeakLive = thingspeak?.live;
+    const thingSpeakEnabled = thingspeak?.enabled;
+    const sourceLabel = isThingSpeakLive ? 'THINGSPEAK LIVE' : (thingSpeakEnabled ? 'THINGSPEAK CONNECTING' : 'SIMULATED FEED');
+    const sourceBadge = isThingSpeakLive ? 'badge-green' : (thingSpeakEnabled ? 'badge-amber' : 'badge-blue');
+    const rawField1 = thingspeak?.rawFields?.field1 ?? '--';
+    const rawField2 = thingspeak?.rawFields?.field2 ?? '--';
+    const lastSyncLabel = thingspeak?.lastSync
+      ? new Date(thingspeak.lastSync).toLocaleTimeString()
+      : '--:--:--';
     const criticalLeak = leaks.find(l => l.severity === 'critical');
     const pumpAlerts = pumps.filter(p => p.status !== 'operational').length;
 
@@ -1056,9 +1066,46 @@ class AquaSyncApp {
         </div>
         <div style="display:flex;align-items:center;gap:10px;">
           <span class="badge badge-green">LIVE MONITORING</span>
+          <span class="badge ${sourceBadge}">${sourceLabel}</span>
+          <span class="badge badge-blue">Last Sync ${lastSyncLabel}</span>
           <span style="font-family: 'IBM Plex Mono', monospace; font-size:13px; color:var(--text-3);">${new Date().toLocaleTimeString()}</span>
         </div>
       </div>
+
+      ${thingSpeakEnabled ? `
+      <div class="panel" style="margin-bottom:16px;">
+        <div class="panel-header">
+          <div class="panel-title">ThingSpeak Real-Time Feed</div>
+          <span class="badge ${sourceBadge}">${sourceLabel}</span>
+        </div>
+        <div class="panel-body" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;">
+          <div class="param-card">
+            <div class="param-name">Channel</div>
+            <div class="param-val">${thingspeak?.channelId || '--'}</div>
+          </div>
+          <div class="param-card">
+            <div class="param-name">Field1 (raw)</div>
+            <div class="param-val">${rawField1}</div>
+          </div>
+          <div class="param-card">
+            <div class="param-name">Field2 (raw)</div>
+            <div class="param-val">${rawField2}</div>
+          </div>
+          <div class="param-card">
+            <div class="param-name">Mapped pH</div>
+            <div class="param-val">${waterQuality.ph}</div>
+          </div>
+          <div class="param-card">
+            <div class="param-name">Mapped TDS</div>
+            <div class="param-val">${waterQuality.tds}</div>
+          </div>
+          <div class="param-card">
+            <div class="param-name">Feed Timestamp</div>
+            <div class="param-val">${thingspeak?.lastFeedAt ? new Date(thingspeak.lastFeedAt).toLocaleString() : 'N/A'}</div>
+          </div>
+        </div>
+      </div>
+      ` : ''}
 
       ${criticalLeak ? `
       <div class="alert" style="border-color:var(--red);background:rgba(254,226,226,.85);margin-bottom:16px;">
@@ -2053,6 +2100,7 @@ class AquaSyncApp {
   renderSTP() {
     const { stp } = this.data;
     const automation = this.getSTPAutomation();
+    const thingspeak = this.data?.integrations?.thingspeak;
     const inflow = Number(stp.inflow || 0);
     const outflow = Number(stp.outflow || 0);
     const efficiency = Number(stp.efficiency || 0);
@@ -2197,6 +2245,7 @@ class AquaSyncApp {
             <div style="font-size:12px;font-weight:700;color:var(--blue);margin-bottom:4px;">How this makes STP automatic</div>
             <div style="font-size:12px;color:var(--text-2);line-height:1.6;">Live sensor values trigger control rules. The system auto-tunes aeration, dosing, and purge cycles, then updates risk/compliance in real time without waiting for manual operator rounds.</div>
             <div style="font-size:11px;color:var(--text-3);margin-top:6px;">Last optimization: ${automation.lastOptimization} · Autopilot: ${automation.autoPilotEnabled ? 'ON' : 'OFF'} · Emergency: ${automation.emergencyStop ? 'ACTIVE' : 'CLEAR'}</div>
+            <div style="font-size:11px;color:var(--text-3);margin-top:4px;">Source: ${thingspeak?.live ? 'ThingSpeak Live Feed' : (thingspeak?.enabled ? 'ThingSpeak Enabled (waiting for feed)' : 'Simulated Data')} · Feed Time: ${thingspeak?.lastFeedAt ? new Date(thingspeak.lastFeedAt).toLocaleString() : 'N/A'}</div>
           </div>
         </div>
       </div>

@@ -287,6 +287,19 @@ let sensorData = {
       { id: 'N-047', x: 75, y: 60, status: 'leak', pressure: 1.2, flow: 120 },
       { id: 'N-052', x: 85, y: 25, status: 'normal', pressure: 4.5, flow: 460 }
     ]
+  },
+  integrations: {
+    thingspeak: {
+      enabled: false,
+      live: false,
+      channelId: null,
+      mappedFields: ['field1->waterQuality.ph', 'field2->waterQuality.tds'],
+      lastSync: null,
+      lastFeedAt: null,
+      lastEntryId: null,
+      lastError: null,
+      source: 'Simulated Data'
+    }
   }
 };
 
@@ -295,7 +308,109 @@ const MONGODB_URI =
   process.env.MONGO_URI ||
   'mongodb://127.0.0.1:27017/water_dashboard';
 
+const THINGSPEAK_ENABLED = process.env.THINGSPEAK_ENABLED === 'true';
+const THINGSPEAK_CHANNEL_ID = process.env.THINGSPEAK_CHANNEL_ID || '';
+const THINGSPEAK_READ_API_KEY = process.env.THINGSPEAK_READ_API_KEY || '';
+const THINGSPEAK_POLL_SECONDS = Math.max(5, Number(process.env.THINGSPEAK_POLL_SECONDS || 15));
+
 let dbConnected = false;
+
+const thingspeakStatus = {
+  enabled: THINGSPEAK_ENABLED,
+  live: false,
+  channelId: THINGSPEAK_CHANNEL_ID || null,
+  mappedFields: ['field1->waterQuality.ph', 'field2->waterQuality.tds'],
+  rawFields: { field1: null, field2: null },
+  lastSync: null,
+  lastFeedAt: null,
+  lastEntryId: null,
+  lastError: null,
+  source: 'Simulated Data'
+};
+
+function toNumber(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function updateThingSpeakStatus(partial = {}) {
+  Object.assign(thingspeakStatus, partial);
+  sensorData.integrations = sensorData.integrations || {};
+  sensorData.integrations.thingspeak = {
+    ...(sensorData.integrations.thingspeak || {}),
+    ...thingspeakStatus
+  };
+}
+
+function applyThingSpeakFeed(feed) {
+  const rawField1 = feed?.field1 ?? null;
+  const rawField2 = feed?.field2 ?? null;
+  const field1 = toNumber(feed?.field1);
+  const field2 = toNumber(feed?.field2);
+
+  if (field1 !== null) {
+    sensorData.waterQuality.ph = Number(field1.toFixed(2));
+    sensorData.hardware.sensors.phSensor.reading = Number(field1.toFixed(2));
+  }
+
+  if (field2 !== null) {
+    sensorData.waterQuality.tds = Math.round(field2);
+    sensorData.hardware.sensors.tdsSensor.reading = Math.round(field2);
+  }
+
+  // Keep WQI dynamic based on key quality indicators if ThingSpeak values arrive.
+  const ph = Number(sensorData.waterQuality.ph);
+  const tds = Number(sensorData.waterQuality.tds);
+  const wqiEstimate = 98 - Math.abs(ph - 7) * 8 - Math.max(0, tds - 100) / 12;
+  sensorData.waterQuality.wqi = Number(Math.max(45, Math.min(99, wqiEstimate)).toFixed(1));
+
+  updateThingSpeakStatus({
+    live: true,
+    source: 'ThingSpeak',
+    rawFields: {
+      field1: rawField1,
+      field2: rawField2
+    },
+    lastSync: new Date().toISOString(),
+    lastFeedAt: feed?.created_at || null,
+    lastEntryId: feed?.entry_id || null,
+    lastError: null
+  });
+}
+
+async function syncThingSpeakData() {
+  if (!THINGSPEAK_ENABLED) return;
+
+  if (!THINGSPEAK_CHANNEL_ID || !THINGSPEAK_READ_API_KEY) {
+    updateThingSpeakStatus({
+      live: false,
+      source: 'ThingSpeak',
+      lastError: 'Missing THINGSPEAK_CHANNEL_ID or THINGSPEAK_READ_API_KEY'
+    });
+    return;
+  }
+
+  const url = `https://api.thingspeak.com/channels/${THINGSPEAK_CHANNEL_ID}/feeds/last.json?api_key=${encodeURIComponent(THINGSPEAK_READ_API_KEY)}`;
+
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`ThingSpeak responded with status ${response.status}`);
+    }
+
+    const feed = await response.json();
+    applyThingSpeakFeed(feed);
+    persistDashboardState('thingspeak-sync');
+  } catch (error) {
+    updateThingSpeakStatus({
+      live: false,
+      source: 'ThingSpeak',
+      lastSync: new Date().toISOString(),
+      lastError: error.message
+    });
+    console.warn(`[ThingSpeak] Sync failed: ${error.message}`);
+  }
+}
 
 async function saveDashboardState(reason = 'update') {
   if (!dbConnected) return;
@@ -382,7 +497,8 @@ app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
-    database: dbConnected ? 'connected' : 'disconnected'
+    database: dbConnected ? 'connected' : 'disconnected',
+    thingspeak: thingspeakStatus.live ? 'live' : (THINGSPEAK_ENABLED ? 'enabled-not-live' : 'disabled')
   });
 });
 
@@ -391,6 +507,14 @@ app.get('/api/database/status', (req, res) => {
     database: dbConnected ? 'connected' : 'disconnected',
     mongoReadyState: mongoose.connection.readyState,
     mongodbUri: MONGODB_URI
+  });
+});
+
+app.get('/api/integrations/thingspeak/status', (req, res) => {
+  res.json({
+    ...thingspeakStatus,
+    channelId: THINGSPEAK_CHANNEL_ID || null,
+    pollSeconds: THINGSPEAK_POLL_SECONDS
   });
 });
 
@@ -970,6 +1094,28 @@ app.post('/api/hardware/data', (req, res) => {
 async function startServer() {
   await connectToDatabase();
 
+  updateThingSpeakStatus({
+    enabled: THINGSPEAK_ENABLED,
+    channelId: THINGSPEAK_CHANNEL_ID || null,
+    source: THINGSPEAK_ENABLED ? 'ThingSpeak' : 'Simulated Data'
+  });
+
+  if (THINGSPEAK_ENABLED) {
+    if (!THINGSPEAK_CHANNEL_ID || !THINGSPEAK_READ_API_KEY) {
+      console.warn('[ThingSpeak] Enabled but missing channel/key configuration.');
+    } else {
+      console.log(`[ThingSpeak] Enabled for channel ${THINGSPEAK_CHANNEL_ID} (poll every ${THINGSPEAK_POLL_SECONDS}s).`);
+      syncThingSpeakData().catch((error) => {
+        console.warn(`[ThingSpeak] Initial sync failed: ${error.message}`);
+      });
+      setInterval(() => {
+        syncThingSpeakData().catch((error) => {
+          console.warn(`[ThingSpeak] Polling error: ${error.message}`);
+        });
+      }, THINGSPEAK_POLL_SECONDS * 1000);
+    }
+  }
+
   const server = app.listen(PORT, () => {
     console.log(`🚀 AquaSync Backend running on http://localhost:${PORT}`);
     console.log(`📊 Dashboard API: http://localhost:${PORT}/api/dashboard`);
@@ -993,12 +1139,17 @@ async function startServer() {
 
     // Simulate real-time updates every 5 seconds
     const interval = setInterval(() => {
-      // Simulate sensor fluctuations
-      sensorData.waterQuality.wqi = (87 + Math.random() * 3).toFixed(1);
-      sensorData.waterQuality.ph = (7.1 + Math.random() * 0.3).toFixed(1);
-      sensorData.waterQuality.tds = Math.floor(140 + Math.random() * 10);
-      sensorData.waterQuality.flowRate = (12 + Math.random() * 2).toFixed(1);
-      sensorData.demand.current = (2.4 + Math.random() * 0.3).toFixed(2);
+      const useSimulatedQuality = !(THINGSPEAK_ENABLED && thingspeakStatus.live);
+
+      if (useSimulatedQuality) {
+        // Simulate sensor fluctuations when external real-time feed is not active.
+        sensorData.waterQuality.wqi = Number((87 + Math.random() * 3).toFixed(1));
+        sensorData.waterQuality.ph = Number((7.1 + Math.random() * 0.3).toFixed(2));
+        sensorData.waterQuality.tds = Math.floor(140 + Math.random() * 10);
+        sensorData.waterQuality.flowRate = Number((12 + Math.random() * 2).toFixed(2));
+      }
+
+      sensorData.demand.current = Number((2.4 + Math.random() * 0.3).toFixed(2));
 
       // Update soil moisture and auto-control sprinklers (only in auto mode)
       let activeCount = 0;
