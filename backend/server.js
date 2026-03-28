@@ -20,10 +20,10 @@ app.use(express.json());
 // Simulated sensor data (will be replaced with hardware integration)
 let sensorData = {
   waterQuality: {
-    wqi: 87.4,
-    ph: 7.2,
+    wqi: 81.33,
+    ph: 6.86,
     turbidity: 2.1,
-    tds: 145,
+    tds: 0,
     chlorine: 0.8,
     temperature: 24.5,
     flowRate: 12.5 // L/min from flow sensor
@@ -31,38 +31,38 @@ let sensorData = {
   waterPotability: {
     updatedAt: new Date().toISOString(),
     inputReadings: {
-      ph: 7.2,
+      ph: 6.86,
       turbidity: 2.1,
-      tds: 145,
+      tds: 0,
       chlorine: 0.8,
       temperature: 24.5,
-      wqi: 87.4
+      wqi: 81.33
     },
     ranges: [],
     fuzzy: {
       method: 'Mamdani',
-      score: 82,
+      score: 80.8,
       label: 'Safe',
-      confidence: 0.78,
+      confidence: 0.938,
       rulesFired: []
     },
     ml: {
       trained: false,
       probability: null,
-      score: null,
-      label: 'Model not trained',
-      accuracy: null,
+      score: 82.31,
+      label: 'Potable',
+      accuracy: 87.14,
       trainedAt: null,
       samples: 0
     },
     hybrid: {
-      score: 82,
+      score: 81.33,
       label: 'Safe',
       recommendedUse: 'Direct drinking',
       binaryClass: 1
     },
     diseaseRisk: {
-      overall: 'Low',
+      overall: 'High',
       conditions: [],
       recommendations: []
     },
@@ -1407,7 +1407,10 @@ app.get('/api/water-quality', (req, res) => {
 });
 
 app.get('/api/water-potability', (req, res) => {
-  res.json(sensorData.waterPotability);
+  // Evaluate current sensor data to get fresh disease risk calculation
+  const evaluation = evaluateWaterPotability(sensorData.waterQuality);
+  sensorData.waterPotability = evaluation;
+  res.json(evaluation);
 });
 
 // Alias route in case client uses the term "portability".
@@ -2076,9 +2079,27 @@ async function startServer() {
 
       if (useSimulatedQuality) {
         // Simulate sensor fluctuations when external real-time feed is not active.
-        sensorData.waterQuality.wqi = Number((87 + Math.random() * 3).toFixed(1));
-        sensorData.waterQuality.ph = Number((7.1 + Math.random() * 0.3).toFixed(2));
-        sensorData.waterQuality.tds = Math.floor(140 + Math.random() * 10);
+        // Include dynamic variations that occasionally trigger disease conditions
+        sensorData.waterQuality.wqi = Number((80 + Math.random() * 10).toFixed(1));
+        sensorData.waterQuality.ph = Number((6.8 + Math.random() * 1.0).toFixed(2));
+        
+        // Dynamic TDS simulation - occasionally dips to trigger "Low Mineral Water" disease
+        const randTds = Math.random();
+        if (randTds < 0.3) {
+          // 30% chance of very low TDS (triggers Low Mineral Water Exposure disease)
+          sensorData.waterQuality.tds = Math.floor(Math.random() * 40);
+        } else if (randTds < 0.6) {
+          // 30% chance of normal range
+          sensorData.waterQuality.tds = Math.floor(100 + Math.random() * 300);
+        } else {
+          // 40% chance of elevated TDS (normal operational range)
+          sensorData.waterQuality.tds = Math.floor(150 + Math.random() * 250);
+        }
+        
+        // Dynamic turbidity and chlorine
+        sensorData.waterQuality.turbidity = Number((2.0 + Math.random() * 2.5).toFixed(2));
+        sensorData.waterQuality.chlorine = Number((0.7 + Math.random() * 0.4).toFixed(2));
+        sensorData.waterQuality.temperature = Number((22 + Math.random() * 5).toFixed(1));
         sensorData.waterQuality.flowRate = Number((12 + Math.random() * 2).toFixed(2));
       }
 

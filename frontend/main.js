@@ -65,10 +65,11 @@ class AquaSyncApp {
   }
 
   startPotabilityRefresh() {
-    // Keep trained model outputs fresh even if websocket payload misses potability block.
+    // Keep trained model outputs fresh by polling for disease risk updates
+    // using a more frequent interval for real-time disease signal detection
     setInterval(() => {
       this.loadPotabilityData();
-    }, 12000);
+    }, 3000); // Refresh every 3 seconds for real-time disease risk updates
   }
 
   setAIChatVisibility(isOpen) {
