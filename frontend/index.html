@@ -121,8 +121,13 @@
       <div id="app-content"></div>
     </main>
     
+    <!-- AI Help Center Launcher -->
+    <button id="ai-chat-launcher" onclick="app.toggleAIChat()" style="position:fixed;right:24px;bottom:24px;width:60px;height:60px;border:none;border-radius:50%;background:var(--blue);color:#fff;cursor:pointer;z-index:999;box-shadow:0 10px 22px rgba(29,108,240,0.35);display:flex;align-items:center;justify-content:center;">
+      <svg width="24" height="24" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+    </button>
+
     <!-- AI Chatbot -->
-    <div id="ai-chatbot" style="display:none;position:fixed;bottom:20px;right:20px;width:380px;height:550px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow-md);z-index:1000;display:flex;flex-direction:column">
+    <div id="ai-chatbot" style="display:none;position:fixed;bottom:20px;right:20px;width:380px;height:550px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow-md);z-index:1000;flex-direction:column">
       <div style="padding:16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--purple);color:white;border-radius:var(--radius-lg) var(--radius-lg) 0 0">
         <div style="display:flex;align-items:center;gap:10px">
           <div style="width:32px;height:32px;background:rgba(255,255,255,0.2);border-radius:50%;display:flex;align-items:center;justify-content:center">

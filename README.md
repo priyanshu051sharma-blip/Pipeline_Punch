@@ -86,6 +86,30 @@ npm start
 
 Backend runs on: http://localhost:3000
 
+### MongoDB Setup (Backend + Compass)
+
+1. Use local MongoDB URI (works with MongoDB Compass and backend):
+  ```
+  mongodb://127.0.0.1:27017/water_dashboard
+  ```
+2. Copy `backend/.env.example` to `backend/.env` and set:
+  ```
+  MONGODB_URI=mongodb://127.0.0.1:27017/water_dashboard
+  ```
+3. Start backend:
+  ```bash
+  cd backend
+  npm start
+  ```
+4. Verify DB connection:
+  - `GET http://localhost:3000/api/health`
+  - `GET http://localhost:3000/api/database/status`
+
+For Atlas, use this format in both Compass and `.env`:
+```
+mongodb+srv://<username>:<password>@<cluster-name>.mongodb.net/water_dashboard?retryWrites=true&w=majority&appName=water-dashboard
+```
+
 ### Frontend Setup
 
 ```bash
@@ -122,6 +146,7 @@ The backend is designed for easy hardware integration. To connect IoT sensors:
 
 ### Dashboard & Monitoring
 - `GET /api/health` - Health check
+- `GET /api/database/status` - MongoDB connection status
 - `GET /api/dashboard` - Complete dashboard data
 - `GET /api/water-quality` - Water quality parameters
 - `GET /api/leaks` - Active leak detections

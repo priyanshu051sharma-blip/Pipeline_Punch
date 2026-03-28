@@ -4,7 +4,12 @@ const WebSocket = require('ws');
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
-require('dotenv').config();
+const mongoose = require('mongoose');
+const DashboardState = require('./models/DashboardState');
+
+// Support both backend/.env and backend/env for local developer setups.
+require('dotenv').config({ path: path.join(__dirname, '.env') });
+require('dotenv').config({ path: path.join(__dirname, 'env') });
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -285,9 +290,108 @@ let sensorData = {
   }
 };
 
+const MONGODB_URI =
+  process.env.MONGODB_URI ||
+  process.env.MONGO_URI ||
+  'mongodb://127.0.0.1:27017/water_dashboard';
+
+let dbConnected = false;
+
+async function saveDashboardState(reason = 'update') {
+  if (!dbConnected) return;
+
+  try {
+    await DashboardState.findOneAndUpdate(
+      { recordType: 'current' },
+      {
+        ...sensorData,
+        recordType: 'current',
+        updatedAt: new Date()
+      },
+      {
+        upsert: true,
+        setDefaultsOnInsert: true,
+        new: true,
+        runValidators: false
+      }
+    );
+  } catch (error) {
+    console.error(`[MongoDB] Failed to persist dashboard state (${reason}):`, error.message);
+  }
+}
+
+function persistDashboardState(reason) {
+  saveDashboardState(reason).catch((error) => {
+    console.error('[MongoDB] Unexpected persistence error:', error.message);
+  });
+}
+
+async function loadDashboardStateFromDatabase() {
+  if (!dbConnected) return;
+
+  try {
+    const existing = await DashboardState.findOne({ recordType: 'current' }).lean();
+
+    if (existing) {
+      const { _id, __v, recordType, updatedAt, ...savedData } = existing;
+      sensorData = {
+        ...sensorData,
+        ...savedData
+      };
+      console.log('[MongoDB] Loaded saved dashboard state.');
+      return;
+    }
+
+    await saveDashboardState('initial-seed');
+    console.log('[MongoDB] Seeded initial dashboard state.');
+  } catch (error) {
+    console.error('[MongoDB] Failed loading dashboard state:', error.message);
+  }
+}
+
+async function connectToDatabase() {
+  try {
+    await mongoose.connect(MONGODB_URI, {
+      serverSelectionTimeoutMS: 8000,
+      maxPoolSize: 10
+    });
+
+    dbConnected = true;
+    console.log('[MongoDB] Connected successfully.');
+
+    mongoose.connection.on('disconnected', () => {
+      dbConnected = false;
+      console.warn('[MongoDB] Connection lost. Running in memory-only mode.');
+    });
+
+    mongoose.connection.on('reconnected', () => {
+      dbConnected = true;
+      console.log('[MongoDB] Reconnected successfully.');
+    });
+
+    await loadDashboardStateFromDatabase();
+  } catch (error) {
+    dbConnected = false;
+    console.warn(`[MongoDB] Connection failed: ${error.message}`);
+    console.warn('[MongoDB] Backend will continue in memory-only mode.');
+  }
+}
+
 // API Routes
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    database: dbConnected ? 'connected' : 'disconnected'
+  });
+});
+
+app.get('/api/database/status', (req, res) => {
+  res.json({
+    database: dbConnected ? 'connected' : 'disconnected',
+    mongoReadyState: mongoose.connection.readyState,
+    mongodbUri: MONGODB_URI
+  });
 });
 
 app.get('/api/dashboard', (req, res) => {
@@ -356,6 +460,8 @@ app.post('/api/control/sprinkler/:zoneId', (req, res) => {
       zone.duration = 0;
     }
   }
+
+  persistDashboardState(`sprinkler-control-${zoneId}`);
   
   res.json({ success: true, zone: zoneId, action, duration });
 });
@@ -364,6 +470,7 @@ app.post('/api/control/irrigation-mode', (req, res) => {
   const { mode } = req.body; // 'auto' or 'manual'
   sensorData.irrigation.mode = mode;
   console.log(`Irrigation mode changed to: ${mode}`);
+  persistDashboardState('irrigation-mode-change');
   res.json({ success: true, mode });
 });
 
@@ -382,6 +489,8 @@ app.get('/api/forecast/run', (req, res) => {
   const forecastRepo = path.resolve(__dirname, '..', 'tmp_forecast_repo');
   const predictScript = path.join(forecastRepo, 'src', 'predict.py');
 
+  const reportUrl = `${req.protocol}://${req.get('host')}/api/reports/forecast/csv`;
+
   // Generate synthetic forecast data as fallback
   const generateSyntheticForecast = () => {
     const dailyForecast = [];
@@ -392,7 +501,7 @@ app.get('/api/forecast/run', (req, res) => {
     for (let i = 0; i < days; i++) {
       dailyForecast.push({
         day: dayNames[i] || `Day ${i+1}`,
-        value: (baseValue + (Math.random() - 0.5) * 0.8).toFixed(2),
+        value: Number((baseValue + (Math.random() - 0.5) * 0.8).toFixed(2)),
         status: statuses[i] || 'Normal'
       });
     }
@@ -407,6 +516,83 @@ app.get('/api/forecast/run', (req, res) => {
       sectorBreakdown: sensorData.demandForecast.sectorBreakdown,
       recommendations: sensorData.demandForecast.recommendations
     };
+  };
+
+  const normalizeForecast = (forecast) => {
+    const safeForecast = forecast || {};
+    const base = sensorData.demandForecast || {};
+    return {
+      ...base,
+      ...safeForecast,
+      dailyForecast: Array.isArray(safeForecast.dailyForecast)
+        ? safeForecast.dailyForecast
+        : (base.dailyForecast || []),
+      sectorBreakdown: Array.isArray(safeForecast.sectorBreakdown)
+        ? safeForecast.sectorBreakdown
+        : (base.sectorBreakdown || []),
+      recommendations: Array.isArray(safeForecast.recommendations)
+        ? safeForecast.recommendations
+        : (base.recommendations || []),
+      historicalData: Array.isArray(safeForecast.historicalData)
+        ? safeForecast.historicalData
+        : (base.historicalData || [])
+    };
+  };
+
+  const saveAndRespond = ({
+    forecast,
+    message,
+    source,
+    logs = '',
+    exitCode = null,
+    requestedDays = days,
+    error = null,
+    hint = null
+  }) => {
+    const finalForecast = normalizeForecast(forecast);
+    sensorData.demandForecast = finalForecast;
+    persistDashboardState('forecast-run');
+
+    const response = {
+      message,
+      source,
+      requestedDays,
+      forecast: finalForecast,
+      reportUrl
+    };
+
+    if (exitCode !== null) response.exitCode = exitCode;
+    if (logs) response.logs = logs;
+    if (error) response.error = error;
+    if (hint) response.hint = hint;
+
+    return res.json(response);
+  };
+
+  const tryExtractForecastFromLogs = (logs) => {
+    if (!logs || typeof logs !== 'string') return null;
+
+    const candidates = logs
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .reverse();
+
+    for (const line of candidates) {
+      if (!line.startsWith('{') && !line.startsWith('[')) continue;
+
+      try {
+        const parsed = JSON.parse(line);
+        const extracted = parsed && parsed.forecast ? parsed.forecast : parsed;
+        if (extracted && (Array.isArray(extracted.dailyForecast) || extracted.forecast7Day || extracted.today)) {
+          return extracted;
+        }
+      } catch (error) {
+        // Ignore non-JSON log lines.
+      }
+    }
+
+    return null;
   };
 
   // Try to run Python model if available
@@ -425,17 +611,22 @@ app.get('/api/forecast/run', (req, res) => {
 
     processRun.on('close', (code) => {
       if (code === 0 && !hasError) {
-        res.json({
-          message: 'Forecast model executed successfully',
+        const parsedForecast = tryExtractForecastFromLogs(logs);
+        const forecast = parsedForecast || generateSyntheticForecast();
+
+        return saveAndRespond({
+          message: parsedForecast
+            ? 'Forecast model executed successfully'
+            : 'Forecast model ran but returned no structured data; generated synthetic forecast',
           exitCode: code,
           logs,
           requestedDays: days,
-          forecast: sensorData.demandForecast,
-          source: 'ML Model'
+          forecast,
+          source: parsedForecast ? 'ML Model' : 'Synthetic Data'
         });
       } else {
         const syntheticForecast = generateSyntheticForecast();
-        res.json({
+        return saveAndRespond({
           message: 'ML Model unavailable; returning synthetic forecast',
           exitCode: code,
           logs,
@@ -448,9 +639,10 @@ app.get('/api/forecast/run', (req, res) => {
 
     processRun.on('error', (error) => {
       const syntheticForecast = generateSyntheticForecast();
-      res.json({
+      return saveAndRespond({
         message: 'ML Model execution failed; returning synthetic forecast',
         error: error.message,
+        requestedDays: days,
         forecast: syntheticForecast,
         source: 'Synthetic Data'
       });
@@ -458,7 +650,7 @@ app.get('/api/forecast/run', (req, res) => {
   } else {
     // Model not found, return synthetic forecast
     const syntheticForecast = generateSyntheticForecast();
-    res.json({
+    return saveAndRespond({
       message: 'ML Model repository not found. Generating synthetic forecast.',
       hint: 'To use real ML model, clone: https://github.com/aildnont/water-forecast into tmp_forecast_repo',
       forecast: syntheticForecast,
@@ -581,6 +773,7 @@ app.post('/api/thresholds', (req, res) => {
     threshold.min = parseFloat(min);
     threshold.max = parseFloat(max);
     console.log(`[THRESHOLD] Updated ${parameter}: min=${threshold.min}, max=${threshold.max}`);
+    persistDashboardState(`threshold-update-${parameter}`);
     res.json({ success: true, parameter, min: threshold.min, max: threshold.max, message: 'Threshold updated successfully' });
   } else {
     res.status(404).json({ error: 'Threshold parameter not found' });
@@ -605,6 +798,8 @@ app.post('/api/thresholds/bulk', (req, res) => {
       updated++;
     }
   });
+
+  persistDashboardState('threshold-bulk-update');
 
   res.json({
     success: true,
@@ -743,7 +938,28 @@ app.post('/api/ai/chat', (req, res) => {
 app.post('/api/hardware/data', (req, res) => {
   if (process.env.HARDWARE_ENABLED === 'true') {
     const { sensor, value } = req.body;
-    // Update sensor data from hardware
+    const parsedValue = Number(value);
+
+    // Minimal sensor mapping for common hardware payload names.
+    const sensorMap = {
+      ph: ['waterQuality', 'ph'],
+      ph_sensor_01: ['waterQuality', 'ph'],
+      tds: ['waterQuality', 'tds'],
+      tds_sensor_01: ['waterQuality', 'tds'],
+      turbidity: ['waterQuality', 'turbidity'],
+      chlorine: ['waterQuality', 'chlorine'],
+      temperature: ['waterQuality', 'temperature'],
+      flow: ['waterQuality', 'flowRate'],
+      flow_sensor_01: ['waterQuality', 'flowRate']
+    };
+
+    const targetPath = sensorMap[sensor];
+    if (targetPath && !Number.isNaN(parsedValue)) {
+      const [section, key] = targetPath;
+      sensorData[section][key] = parsedValue;
+      persistDashboardState(`hardware-ingest-${sensor}`);
+    }
+
     console.log(`Hardware data received: ${sensor} = ${value}`);
     res.json({ success: true, message: 'Data received' });
   } else {
@@ -751,90 +967,103 @@ app.post('/api/hardware/data', (req, res) => {
   }
 });
 
-const server = app.listen(PORT, () => {
-  console.log(`🚀 AquaSync Backend running on http://localhost:${PORT}`);
-  console.log(`📊 Dashboard API: http://localhost:${PORT}/api/dashboard`);
-});
+async function startServer() {
+  await connectToDatabase();
 
-// WebSocket for real-time updates
-const wss = new WebSocket.Server({ server });
+  const server = app.listen(PORT, () => {
+    console.log(`🚀 AquaSync Backend running on http://localhost:${PORT}`);
+    console.log(`📊 Dashboard API: http://localhost:${PORT}/api/dashboard`);
+    console.log(`🗄️ MongoDB URI: ${MONGODB_URI}`);
+    console.log(`🧭 Compass: use the same URI above to connect`);
+  });
 
-wss.on('connection', (ws) => {
-  console.log('📡 Client connected to WebSocket');
-  
-  // Send initial data
-  ws.send(JSON.stringify({ type: 'init', data: sensorData }));
-  
-  // Simulate real-time updates every 5 seconds
-  const interval = setInterval(() => {
-    // Simulate sensor fluctuations
-    sensorData.waterQuality.wqi = (87 + Math.random() * 3).toFixed(1);
-    sensorData.waterQuality.ph = (7.1 + Math.random() * 0.3).toFixed(1);
-    sensorData.waterQuality.tds = Math.floor(140 + Math.random() * 10);
-    sensorData.waterQuality.flowRate = (12 + Math.random() * 2).toFixed(1);
-    sensorData.demand.current = (2.4 + Math.random() * 0.3).toFixed(2);
-    
-    // Update soil moisture and auto-control sprinklers (only in auto mode)
-    let activeCount = 0;
-    let scheduledCount = 0;
-    
-    sensorData.irrigation.zones.forEach(zone => {
-      // Only apply auto-control if mode is 'auto' and no manual override
-      if (sensorData.irrigation.mode === 'auto' && !zone.manualOverride) {
-        if (zone.sprinklerStatus === 'active') {
-          // Increase moisture while sprinkler is active
+  // Periodic checkpoint to keep MongoDB state in sync with real-time simulation.
+  setInterval(() => {
+    persistDashboardState('periodic-sync');
+  }, 30000);
+
+  // WebSocket for real-time updates
+  const wss = new WebSocket.Server({ server });
+
+  wss.on('connection', (ws) => {
+    console.log('📡 Client connected to WebSocket');
+
+    // Send initial data
+    ws.send(JSON.stringify({ type: 'init', data: sensorData }));
+
+    // Simulate real-time updates every 5 seconds
+    const interval = setInterval(() => {
+      // Simulate sensor fluctuations
+      sensorData.waterQuality.wqi = (87 + Math.random() * 3).toFixed(1);
+      sensorData.waterQuality.ph = (7.1 + Math.random() * 0.3).toFixed(1);
+      sensorData.waterQuality.tds = Math.floor(140 + Math.random() * 10);
+      sensorData.waterQuality.flowRate = (12 + Math.random() * 2).toFixed(1);
+      sensorData.demand.current = (2.4 + Math.random() * 0.3).toFixed(2);
+
+      // Update soil moisture and auto-control sprinklers (only in auto mode)
+      let activeCount = 0;
+      let scheduledCount = 0;
+
+      sensorData.irrigation.zones.forEach(zone => {
+        // Only apply auto-control if mode is 'auto' and no manual override
+        if (sensorData.irrigation.mode === 'auto' && !zone.manualOverride) {
+          if (zone.sprinklerStatus === 'active') {
+            // Increase moisture while sprinkler is active
+            zone.soilMoisture = Math.min(100, zone.soilMoisture + 0.5);
+            zone.waterUsed += 5;
+            zone.duration += 0.083; // Add 5 seconds in minutes
+            zone.flowRate = 10 + Math.random() * 5;
+
+            // Stop when moisture reaches 40%
+            if (zone.soilMoisture >= 40) {
+              zone.sprinklerStatus = 'idle';
+              zone.flowRate = 0;
+              console.log(`🌱 Auto-stopped sprinkler for ${zone.name} - Moisture: ${zone.soilMoisture}%`);
+            } else {
+              activeCount++;
+            }
+          } else {
+            // Decrease moisture when idle
+            zone.soilMoisture = Math.max(0, zone.soilMoisture - 0.2);
+            zone.flowRate = 0;
+
+            // Auto-activate when below threshold
+            if (zone.soilMoisture < zone.threshold) {
+              zone.sprinklerStatus = 'active';
+              zone.duration = 0;
+              activeCount++;
+              console.log(`🌱 Auto-activated sprinkler for ${zone.name} - Moisture: ${zone.soilMoisture}%`);
+            } else if (zone.soilMoisture < zone.threshold + 5) {
+              zone.sprinklerStatus = 'scheduled';
+              scheduledCount++;
+            } else {
+              zone.sprinklerStatus = 'idle';
+            }
+          }
+        } else if (zone.sprinklerStatus === 'active') {
+          // Manual mode - just update stats
           zone.soilMoisture = Math.min(100, zone.soilMoisture + 0.5);
           zone.waterUsed += 5;
-          zone.duration += 0.083; // Add 5 seconds in minutes
+          zone.duration += 0.083;
           zone.flowRate = 10 + Math.random() * 5;
-          
-          // Stop when moisture reaches 40%
-          if (zone.soilMoisture >= 40) {
-            zone.sprinklerStatus = 'idle';
-            zone.flowRate = 0;
-            console.log(`🌱 Auto-stopped sprinkler for ${zone.name} - Moisture: ${zone.soilMoisture}%`);
-          } else {
-            activeCount++;
-          }
-        } else {
-          // Decrease moisture when idle
-          zone.soilMoisture = Math.max(0, zone.soilMoisture - 0.2);
-          zone.flowRate = 0;
-          
-          // Auto-activate when below threshold
-          if (zone.soilMoisture < zone.threshold) {
-            zone.sprinklerStatus = 'active';
-            zone.duration = 0;
-            activeCount++;
-            console.log(`🌱 Auto-activated sprinkler for ${zone.name} - Moisture: ${zone.soilMoisture}%`);
-          } else if (zone.soilMoisture < zone.threshold + 5) {
-            zone.sprinklerStatus = 'scheduled';
-            scheduledCount++;
-          } else {
-            zone.sprinklerStatus = 'idle';
-          }
+          activeCount++;
         }
-      } else if (zone.sprinklerStatus === 'active') {
-        // Manual mode - just update stats
-        zone.soilMoisture = Math.min(100, zone.soilMoisture + 0.5);
-        zone.waterUsed += 5;
-        zone.duration += 0.083;
-        zone.flowRate = 10 + Math.random() * 5;
-        activeCount++;
-      }
+      });
+
+      sensorData.irrigation.activeZones = activeCount;
+      sensorData.irrigation.scheduledZones = scheduledCount;
+      sensorData.irrigation.avgMoisture = Math.round(
+        sensorData.irrigation.zones.reduce((sum, z) => sum + z.soilMoisture, 0) / sensorData.irrigation.zones.length
+      );
+
+      ws.send(JSON.stringify({ type: 'update', data: sensorData }));
+    }, 5000);
+
+    ws.on('close', () => {
+      console.log('📡 Client disconnected');
+      clearInterval(interval);
     });
-    
-    sensorData.irrigation.activeZones = activeCount;
-    sensorData.irrigation.scheduledZones = scheduledCount;
-    sensorData.irrigation.avgMoisture = Math.round(
-      sensorData.irrigation.zones.reduce((sum, z) => sum + z.soilMoisture, 0) / sensorData.irrigation.zones.length
-    );
-    
-    ws.send(JSON.stringify({ type: 'update', data: sensorData }));
-  }, 5000);
-  
-  ws.on('close', () => {
-    console.log('📡 Client disconnected');
-    clearInterval(interval);
   });
-});
+}
+
+startServer();

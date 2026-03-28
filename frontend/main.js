@@ -6,14 +6,72 @@ class AquaSyncApp {
     this.data = null;
     this.currentTab = 'overview';
     this.charts = {};
+    this.dismissedCriticalLeakIds = this.loadDismissedCriticalLeakIds();
+    this.stpAutomation = {
+      mode: 'auto',
+      autoPilotEnabled: true,
+      emergencyStop: false,
+      autoAeration: true,
+      autoDosing: true,
+      autoSludgePurge: true,
+      targetBod: 10,
+      targetCod: 30,
+      energyMode: 'balanced',
+      lastOptimization: 'Not run yet',
+      actionLog: []
+    };
     this.init();
+  }
+
+  loadDismissedCriticalLeakIds() {
+    try {
+      const raw = localStorage.getItem('aquasync.dismissedCriticalLeakIds');
+      if (!raw) return new Set();
+      const ids = JSON.parse(raw);
+      if (!Array.isArray(ids)) return new Set();
+      return new Set(ids);
+    } catch (error) {
+      console.warn('Failed to load dismissed alerts from storage:', error);
+      return new Set();
+    }
+  }
+
+  saveDismissedCriticalLeakIds() {
+    try {
+      localStorage.setItem(
+        'aquasync.dismissedCriticalLeakIds',
+        JSON.stringify(Array.from(this.dismissedCriticalLeakIds))
+      );
+    } catch (error) {
+      console.warn('Failed to save dismissed alerts to storage:', error);
+    }
+  }
+
+  dismissCriticalLeak(leakId) {
+    if (!leakId) return;
+    this.dismissedCriticalLeakIds.add(leakId);
+    this.saveDismissedCriticalLeakIds();
+    this.renderAlerts();
   }
 
   async init() {
     this.setupEventListeners();
     this.startClock();
+    this.setAIChatVisibility(false);
+    this.startSTPAutoPilot();
     await this.connectWebSocket();
     await this.loadData();
+  }
+
+  setAIChatVisibility(isOpen) {
+    const chatbot = document.getElementById('ai-chatbot');
+    const launcher = document.getElementById('ai-chat-launcher');
+    if (!chatbot) return;
+
+    chatbot.style.display = isOpen ? 'flex' : 'none';
+    if (launcher) {
+      launcher.style.display = isOpen ? 'none' : 'flex';
+    }
   }
 
   setupEventListeners() {
@@ -223,7 +281,8 @@ class AquaSyncApp {
   toggleAIChat() {
     const chatbot = document.getElementById('ai-chatbot');
     if (!chatbot) return;
-    chatbot.style.display = chatbot.style.display === 'none' ? 'flex' : 'none';
+    const isOpen = chatbot.style.display === 'flex';
+    this.setAIChatVisibility(!isOpen);
   }
 
   sendAIMessage() {
@@ -314,12 +373,19 @@ class AquaSyncApp {
   async runForecastModel() {
     try {
       const res = await fetch(`${API_URL}/forecast/run?days=7`);
+      if (!res.ok) {
+        throw new Error(`Forecast API failed with status ${res.status}`);
+      }
+
       const payload = await res.json();
-      alert(`Forecast run: ${payload.message} (code ${payload.exitCode})`);
+
       if (payload.forecast) {
         this.data.demandForecast = payload.forecast;
         this.render();
       }
+
+      await this.downloadForecastCSV(payload.reportUrl);
+      this.showNotification(`Forecast completed. Source: ${payload.source}. Report downloaded.`, 'success');
       console.log('Forecast model run response:', payload);
     } catch (error) {
       console.error('Forecast model run failed:', error);
@@ -433,12 +499,25 @@ class AquaSyncApp {
     }
   }
 
-  downloadForecastCSV() {
-    const url = `${API_URL}/reports/forecast/csv`;
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `forecast-report-${new Date().toISOString().replace(/[:\.]/g, '-')}.csv`;
-    a.click();
+  async downloadForecastCSV(reportUrl) {
+    try {
+      const url = reportUrl || `${API_URL}/reports/forecast/csv`;
+      const res = await fetch(url);
+      if (!res.ok) {
+        throw new Error(`Forecast report endpoint failed with status ${res.status}`);
+      }
+
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = objectUrl;
+      a.download = `forecast-report-${new Date().toISOString().replace(/[:\.]/g, '-')}.csv`;
+      a.click();
+      URL.revokeObjectURL(objectUrl);
+    } catch (error) {
+      console.error('Download forecast CSV failed:', error);
+      alert('Failed to download forecast report CSV.');
+    }
   }
 
   async dispatchLeakTeam(leak) {
@@ -578,6 +657,178 @@ class AquaSyncApp {
     this.render();
   }
 
+  getSTPAutomation() {
+    if (!this.stpAutomation) {
+      this.stpAutomation = {
+        mode: 'auto',
+        autoPilotEnabled: true,
+        emergencyStop: false,
+        autoAeration: true,
+        autoDosing: true,
+        autoSludgePurge: true,
+        targetBod: 10,
+        targetCod: 30,
+        energyMode: 'balanced',
+        lastOptimization: 'Not run yet',
+        actionLog: []
+      };
+    }
+    return this.stpAutomation;
+  }
+
+  setSTPMode(mode) {
+    const automation = this.getSTPAutomation();
+    if (automation.emergencyStop && mode === 'auto') {
+      this.showNotification('Clear emergency stop before switching to AUTO', 'error');
+      return;
+    }
+    automation.mode = mode === 'manual' ? 'manual' : 'auto';
+    this.showNotification(`STP mode set to ${automation.mode.toUpperCase()}`, 'info');
+    this.render();
+  }
+
+  startSTPAutoPilot() {
+    if (this.stpAutoTimer) return;
+
+    this.stpAutoTimer = setInterval(() => {
+      const automation = this.getSTPAutomation();
+      if (!this.data?.stp) return;
+      if (!automation.autoPilotEnabled || automation.mode !== 'auto' || automation.emergencyStop) return;
+
+      // Small drift to emulate real plant fluctuations before optimization.
+      const driftBod = (Math.random() - 0.5) * 0.6;
+      const driftCod = (Math.random() - 0.5) * 1.2;
+      const stp = this.data.stp;
+      stp.bod = Number(Math.max(6.5, stp.bod + driftBod).toFixed(1));
+      stp.cod = Number(Math.max(18, stp.cod + driftCod).toFixed(1));
+      stp.inflow = Number(Math.max(1.5, stp.inflow + (Math.random() - 0.5) * 0.08).toFixed(2));
+
+      this.runSTPOptimizationCycle({ silent: true, origin: 'autopilot' });
+    }, 12000);
+  }
+
+  toggleSTPAutoPilot() {
+    const automation = this.getSTPAutomation();
+    automation.autoPilotEnabled = !automation.autoPilotEnabled;
+    this.showNotification(`STP Autopilot ${automation.autoPilotEnabled ? 'ENABLED' : 'DISABLED'}`, automation.autoPilotEnabled ? 'success' : 'warning');
+    this.render();
+  }
+
+  stpEmergencyStop() {
+    if (!this.data?.stp) return;
+    const automation = this.getSTPAutomation();
+    automation.emergencyStop = true;
+    automation.mode = 'manual';
+
+    this.data.stp.efficiency = Number(Math.max(70, this.data.stp.efficiency - 2.8).toFixed(1));
+    this.data.stp.riskLevel = 'High';
+    automation.actionLog = [
+      `${new Date().toLocaleTimeString()} - EMERGENCY STOP activated`,
+      ...automation.actionLog
+    ].slice(0, 6);
+
+    this.showNotification('Emergency stop activated for STP control loop', 'error');
+    this.render();
+  }
+
+  stpResumeFromEmergency() {
+    if (!this.data?.stp) return;
+    const automation = this.getSTPAutomation();
+    automation.emergencyStop = false;
+    automation.mode = 'auto';
+
+    this.data.stp.riskLevel = 'Medium';
+    automation.actionLog = [
+      `${new Date().toLocaleTimeString()} - Emergency cleared, AUTO resumed`,
+      ...automation.actionLog
+    ].slice(0, 6);
+
+    this.showNotification('STP resumed from emergency to AUTO mode', 'success');
+    this.runSTPOptimizationCycle({ silent: true, origin: 'resume' });
+  }
+
+  toggleSTPRule(ruleKey) {
+    const automation = this.getSTPAutomation();
+    if (!(ruleKey in automation)) return;
+    automation[ruleKey] = !automation[ruleKey];
+    this.showNotification(`${ruleKey} ${automation[ruleKey] ? 'enabled' : 'disabled'}`, 'info');
+    this.render();
+  }
+
+  simulateSTPPeakLoad() {
+    if (!this.data?.stp) return;
+    const stp = this.data.stp;
+    const automation = this.getSTPAutomation();
+
+    stp.inflow = Number((Number(stp.inflow || 0) + 0.25).toFixed(2));
+    stp.bod = Number((Number(stp.bod || 0) + 1.4).toFixed(1));
+    stp.cod = Number((Number(stp.cod || 0) + 2.6).toFixed(1));
+    stp.efficiency = Math.max(70, Number((Number(stp.efficiency || 0) - 1.8).toFixed(1)));
+    stp.riskLevel = stp.efficiency < 86 ? 'Medium' : 'Low';
+
+    automation.actionLog.unshift(`${new Date().toLocaleTimeString()} - Peak inflow simulated (+0.25 MLD)`);
+    automation.actionLog = automation.actionLog.slice(0, 6);
+
+    this.showNotification('STP peak-load scenario simulated', 'warning');
+    this.render();
+  }
+
+  runSTPOptimizationCycle(options = {}) {
+    const { silent = false, origin = 'manual' } = options;
+    if (!this.data?.stp) return;
+
+    const stp = this.data.stp;
+    const automation = this.getSTPAutomation();
+    const actions = [];
+
+    if (automation.emergencyStop) {
+      if (!silent) this.showNotification('STP is in emergency stop state', 'error');
+      return;
+    }
+
+    if (automation.mode !== 'auto') {
+      if (!silent) this.showNotification('Switch STP mode to AUTO to run optimization', 'error');
+      return;
+    }
+
+    if (automation.autoAeration && stp.bod > automation.targetBod) {
+      const before = stp.bod;
+      stp.bod = Number(Math.max(automation.targetBod - 0.4, stp.bod - 1.1).toFixed(1));
+      stp.efficiency = Number(Math.min(99.5, stp.efficiency + 1.2).toFixed(1));
+      actions.push(`Aeration tuned: BOD ${before} -> ${stp.bod}`);
+    }
+
+    if (automation.autoDosing && stp.cod > automation.targetCod) {
+      const before = stp.cod;
+      stp.cod = Number(Math.max(automation.targetCod - 1.2, stp.cod - 2.2).toFixed(1));
+      stp.efficiency = Number(Math.min(99.5, stp.efficiency + 0.9).toFixed(1));
+      actions.push(`Chemical dosing tuned: COD ${before} -> ${stp.cod}`);
+    }
+
+    if (automation.autoSludgePurge) {
+      stp.outflow = Number(Math.min(stp.inflow, stp.outflow + 0.06).toFixed(2));
+      actions.push('Sludge purge valve cycled for 3 min');
+    }
+
+    if (actions.length === 0) {
+      actions.push('No corrective action needed this cycle');
+    }
+
+    const riskScore = (stp.bod > 11 ? 1 : 0) + (stp.cod > 32 ? 1 : 0) + (stp.efficiency < 88 ? 1 : 0);
+    stp.riskLevel = riskScore >= 2 ? 'High' : riskScore === 1 ? 'Medium' : 'Low';
+
+    automation.lastOptimization = new Date().toLocaleTimeString();
+    automation.actionLog = [
+      `${automation.lastOptimization} - [${origin}] ${actions.join(' | ')}`,
+      ...automation.actionLog
+    ].slice(0, 6);
+
+    if (!silent) {
+      this.showNotification('STP auto-optimization cycle completed', 'success');
+    }
+    this.render();
+  }
+
   switchTab(tab) {
     this.currentTab = tab;
     const titles = {
@@ -671,17 +922,34 @@ class AquaSyncApp {
 
   renderAlerts() {
     const container = document.getElementById('alert-container');
+    if (!container || !this.data || !Array.isArray(this.data.leaks)) return;
+
     const criticalLeaks = this.data.leaks.filter(l => l.severity === 'critical');
+    const activeCriticalIds = new Set(criticalLeaks.map(l => l.id).filter(Boolean));
+
+    // Automatically clear dismissed entries once leak is no longer critical.
+    const idsToClear = [];
+    this.dismissedCriticalLeakIds.forEach((id) => {
+      if (!activeCriticalIds.has(id)) idsToClear.push(id);
+    });
+    idsToClear.forEach((id) => this.dismissedCriticalLeakIds.delete(id));
+    if (idsToClear.length > 0) {
+      this.saveDismissedCriticalLeakIds();
+    }
+
+    const visibleCriticalLeaks = criticalLeaks.filter(
+      leak => !this.dismissedCriticalLeakIds.has(leak.id)
+    );
     
-    if (criticalLeaks.length > 0) {
-      const leak = criticalLeaks[0];
+    if (visibleCriticalLeaks.length > 0) {
+      const leak = visibleCriticalLeaks[0];
       container.innerHTML = `
         <div class="alert">
           <div class="alert-content">
             <div class="alert-title">⚠️ Critical Leak Detected — ${leak.flow} L/min loss</div>
             <div class="alert-sub">📍 ${leak.zone} · Node ${leak.node} · ${leak.time} · Confidence ${leak.confidence}%</div>
           </div>
-          <button class="alert-close" onclick="this.parentElement.remove()">✕</button>
+          <button class="alert-close" onclick="app.dismissCriticalLeak('${leak.id}')">✕</button>
         </div>
       `;
     } else {
@@ -1784,6 +2052,55 @@ class AquaSyncApp {
 
   renderSTP() {
     const { stp } = this.data;
+    const automation = this.getSTPAutomation();
+    const inflow = Number(stp.inflow || 0);
+    const outflow = Number(stp.outflow || 0);
+    const efficiency = Number(stp.efficiency || 0);
+    const utilization = inflow > 0 ? Math.min(100, Math.round((outflow / inflow) * 100)) : 0;
+    const sludgeLoad = Math.max(0, Math.round((stp.bod * inflow) / 10));
+    const bodCompliant = stp.bod <= automation.targetBod;
+    const codCompliant = stp.cod <= automation.targetCod;
+    const riskIsHigh = (stp.riskLevel || '').toLowerCase() === 'high';
+    const autoScore = [automation.autoAeration, automation.autoDosing, automation.autoSludgePurge].filter(Boolean).length;
+    const nextBestAction = !bodCompliant
+      ? 'Increase blower RPM by 8% for one cycle.'
+      : !codCompliant
+        ? 'Increase coagulant dosing by 5% and recheck in 15 min.'
+        : efficiency < 92
+          ? 'Tune recirculation and purge cycle for efficiency recovery.'
+          : 'System is stable. Maintain current auto schedule.';
+
+    const autoRecommendations = [
+      {
+        severity: riskIsHigh ? 'critical' : 'good',
+        title: riskIsHigh ? 'Immediate operator intervention required' : 'Risk under control',
+        desc: riskIsHigh
+          ? 'Emergency override suggested: isolate influent channel and force recycle mode.'
+          : 'Autopilot is maintaining stable discharge profile.'
+      },
+      {
+        severity: bodCompliant ? 'good' : 'critical',
+        title: bodCompliant ? 'BOD target compliant' : 'BOD above auto target',
+        desc: bodCompliant
+          ? `Current BOD ${stp.bod} mg/L is within target (${automation.targetBod}).`
+          : `Increase aeration and re-sample in 15 min. Current: ${stp.bod} mg/L.`
+      },
+      {
+        severity: codCompliant ? 'good' : 'critical',
+        title: codCompliant ? 'COD target compliant' : 'COD above auto target',
+        desc: codCompliant
+          ? `Current COD ${stp.cod} mg/L is within target (${automation.targetCod}).`
+          : `Trigger dosing step-up by 5% and monitor clarifier output.`
+      },
+      {
+        severity: automation.autoPilotEnabled ? 'good' : 'critical',
+        title: automation.autoPilotEnabled ? 'Autopilot active' : 'Autopilot disabled',
+        desc: automation.autoPilotEnabled
+          ? `Automation loops active: ${autoScore}/3 rules enabled.`
+          : 'Enable autopilot to automate response without manual intervention.'
+      }
+    ];
+
     return `
       <div class="kpi-row">
         <div class="kpi">
@@ -1794,9 +2111,9 @@ class AquaSyncApp {
             <span class="kpi-trend trend-up">● Stable</span>
           </div>
           <div class="kpi-label">STP Efficiency</div>
-          <div class="kpi-value">${stp.efficiency}<span style="font-size:14px;font-weight:500;color:var(--text-3)">%</span></div>
+          <div class="kpi-value">${efficiency}<span style="font-size:14px;font-weight:500;color:var(--text-3)">%</span></div>
           <div class="kpi-sub">BOD ${stp.bod} mg/L · COD ${stp.cod} mg/L</div>
-          <div class="kpi-bar"><div class="kpi-bar-fill" style="width:${stp.efficiency}%;background:var(--green)"></div></div>
+          <div class="kpi-bar"><div class="kpi-bar-fill" style="width:${efficiency}%;background:var(--green)"></div></div>
         </div>
         <div class="kpi">
           <div class="kpi-header">
@@ -1808,7 +2125,7 @@ class AquaSyncApp {
           <div class="kpi-label">Risk Level</div>
           <div class="kpi-value">${stp.riskLevel || 'Low'}</div>
           <div class="kpi-sub">Last cleaning ${stp.lastCleaning || 'N/A'}</div>
-          <div class="kpi-bar"><div class="kpi-bar-fill" style="width:${stp.efficiency}%;background:var(--blue)"></div></div>
+          <div class="kpi-bar"><div class="kpi-bar-fill" style="width:${efficiency}%;background:var(--blue)"></div></div>
         </div>
         <div class="kpi">
           <div class="kpi-header">
@@ -1818,16 +2135,109 @@ class AquaSyncApp {
             <span class="kpi-trend trend-warn">● Inflow</span>
           </div>
           <div class="kpi-label">Inflow</div>
-          <div class="kpi-value">${stp.inflow}<span style="font-size:14px;font-weight:500;color:var(--text-3)"> MLD</span></div>
-          <div class="kpi-sub">Outflow ${stp.outflow} MLD</div>
-          <div class="kpi-bar"><div class="kpi-bar-fill" style="width:${Math.min(100, stp.inflow / (stp.outflow || 1) * 100)}%;background:var(--amber)"></div></div>
+          <div class="kpi-value">${inflow}<span style="font-size:14px;font-weight:500;color:var(--text-3)"> MLD</span></div>
+          <div class="kpi-sub">Outflow ${outflow} MLD</div>
+          <div class="kpi-bar"><div class="kpi-bar-fill" style="width:${Math.min(100, inflow / (outflow || 1) * 100)}%;background:var(--amber)"></div></div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-header">
+            <div class="kpi-ico" style="background:var(--purple-light);color:var(--purple)">
+              <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6v6H9z"/></svg>
+            </div>
+            <span class="kpi-trend trend-up">● Auto-Ready</span>
+          </div>
+          <div class="kpi-label">Automation Coverage</div>
+          <div class="kpi-value">${utilization}<span style="font-size:14px;font-weight:500;color:var(--text-3)">%</span></div>
+          <div class="kpi-sub">Estimated sludge load ${sludgeLoad} kg/day</div>
+          <div class="kpi-bar"><div class="kpi-bar-fill" style="width:${utilization}%;background:var(--purple)"></div></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">STP Automation Console</div>
+          <span class="badge ${automation.emergencyStop ? 'badge-red' : automation.mode === 'auto' ? 'badge-green' : 'badge-amber'}">${automation.emergencyStop ? 'EMERGENCY' : `${automation.mode.toUpperCase()} MODE`}</span>
+        </div>
+        <div class="panel-body">
+          <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:12px;">
+            <button class="btn-control btn-green" onclick="app.setSTPMode('auto')">AUTO MODE</button>
+            <button class="btn-control btn-red" onclick="app.setSTPMode('manual')">MANUAL MODE</button>
+            <button class="btn-control ${automation.autoPilotEnabled ? 'btn-green' : 'btn-red'}" onclick="app.toggleSTPAutoPilot()">${automation.autoPilotEnabled ? 'AUTOPILOT ON' : 'AUTOPILOT OFF'}</button>
+            <button class="btn-control btn-green" onclick="app.runSTPOptimizationCycle()">RUN AUTO CYCLE</button>
+            <button class="btn-control btn-red" onclick="app.simulateSTPPeakLoad()">SIMULATE PEAK</button>
+            <button class="btn-control btn-red" onclick="app.stpEmergencyStop()">EMERGENCY STOP</button>
+            <button class="btn-control btn-green" onclick="app.stpResumeFromEmergency()">RESUME SYSTEM</button>
+          </div>
+
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;">
+            <div style="padding:10px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2);display:flex;justify-content:space-between;align-items:center;">
+              <div>
+                <div style="font-size:12px;font-weight:700;">Auto Aeration</div>
+                <div style="font-size:11px;color:var(--text-3);">BOD target ${automation.targetBod} mg/L</div>
+              </div>
+              <button class="btn-control ${automation.autoAeration ? 'btn-green' : 'btn-red'}" onclick="app.toggleSTPRule('autoAeration')" style="padding:8px 18px;font-size:12px;font-weight:800;min-width:72px;">${automation.autoAeration ? 'ON' : 'OFF'}</button>
+            </div>
+            <div style="padding:10px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2);display:flex;justify-content:space-between;align-items:center;">
+              <div>
+                <div style="font-size:12px;font-weight:700;">Auto Dosing</div>
+                <div style="font-size:11px;color:var(--text-3);">COD target ${automation.targetCod} mg/L</div>
+              </div>
+              <button class="btn-control ${automation.autoDosing ? 'btn-green' : 'btn-red'}" onclick="app.toggleSTPRule('autoDosing')" style="padding:8px 18px;font-size:12px;font-weight:800;min-width:72px;">${automation.autoDosing ? 'ON' : 'OFF'}</button>
+            </div>
+            <div style="padding:10px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2);display:flex;justify-content:space-between;align-items:center;">
+              <div>
+                <div style="font-size:12px;font-weight:700;">Auto Sludge Purge</div>
+                <div style="font-size:11px;color:var(--text-3);">Cycle every 30 min</div>
+              </div>
+              <button class="btn-control ${automation.autoSludgePurge ? 'btn-green' : 'btn-red'}" onclick="app.toggleSTPRule('autoSludgePurge')" style="padding:8px 18px;font-size:12px;font-weight:800;min-width:72px;">${automation.autoSludgePurge ? 'ON' : 'OFF'}</button>
+            </div>
+          </div>
+
+          <div style="margin-top:12px;padding:10px;border-radius:10px;background:var(--blue-light);border:1px solid var(--blue-mid);">
+            <div style="font-size:12px;font-weight:700;color:var(--blue);margin-bottom:4px;">How this makes STP automatic</div>
+            <div style="font-size:12px;color:var(--text-2);line-height:1.6;">Live sensor values trigger control rules. The system auto-tunes aeration, dosing, and purge cycles, then updates risk/compliance in real time without waiting for manual operator rounds.</div>
+            <div style="font-size:11px;color:var(--text-3);margin-top:6px;">Last optimization: ${automation.lastOptimization} · Autopilot: ${automation.autoPilotEnabled ? 'ON' : 'OFF'} · Emergency: ${automation.emergencyStop ? 'ACTIVE' : 'CLEAR'}</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">STP Operational Challenges</div>
+          <span class="badge badge-amber">PRIORITY WATCHLIST</span>
+        </div>
+        <div class="panel-body">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;">
+            <div style="border:2px solid #e8d6ca;border-radius:12px;padding:14px;background:#fff8f4;">
+              <div style="display:inline-block;padding:5px 10px;border-radius:20px;background:#d06d45;color:#fff;font-size:11px;font-weight:700;margin-bottom:10px;">Challenge 1</div>
+              <div style="font-size:14px;font-weight:700;margin-bottom:6px;">Inflow Variability</div>
+              <div style="font-size:12px;color:var(--text-3);line-height:1.6;">Rapid inflow swings during peak demand periods reduce aeration stability and increase treatment energy consumption.</div>
+            </div>
+
+            <div style="border:2px solid #e7daff;border-radius:12px;padding:14px;background:#fbf9ff;">
+              <div style="display:inline-block;padding:5px 10px;border-radius:20px;background:#5d4fb3;color:#fff;font-size:11px;font-weight:700;margin-bottom:10px;">Challenge 2</div>
+              <div style="font-size:14px;font-weight:700;margin-bottom:6px;">Quality Drift Delays</div>
+              <div style="font-size:12px;color:var(--text-3);line-height:1.6;">BOD and COD excursions are often identified late when monitoring is manual, causing compliance and discharge risk.</div>
+            </div>
+
+            <div style="border:2px solid #d2e8ff;border-radius:12px;padding:14px;background:#f5faff;">
+              <div style="display:inline-block;padding:5px 10px;border-radius:20px;background:#2f74c0;color:#fff;font-size:11px;font-weight:700;margin-bottom:10px;">Challenge 3</div>
+              <div style="font-size:14px;font-weight:700;margin-bottom:6px;">Reactive Maintenance</div>
+              <div style="font-size:12px;color:var(--text-3);line-height:1.6;">Equipment cleaning and blower servicing happen after performance drops, increasing downtime and operating expenses.</div>
+            </div>
+
+            <div style="border:2px solid #c8d4ff;border-radius:12px;padding:14px;background:#f8faff;">
+              <div style="display:inline-block;padding:5px 10px;border-radius:20px;background:#d06d45;color:#fff;font-size:11px;font-weight:700;margin-bottom:10px;">Challenge 4: Manual Operations</div>
+              <div style="font-size:12px;color:var(--text-2);line-height:1.7;">Manual sewage treatment plant monitoring drives excessive operational costs and reduces system responsiveness to critical issues.</div>
+            </div>
+          </div>
         </div>
       </div>
 
       <div class="panel">
         <div class="panel-header">
           <div class="panel-title">🧪 Treatment Process Status</div>
-          <span class="badge badge-green">${stp.efficiency > 90 ? 'OPTIMAL' : stp.efficiency > 75 ? 'STABLE' : 'ATTENTION'}</span>
+          <span class="badge badge-green">${efficiency > 90 ? 'OPTIMAL' : efficiency > 75 ? 'STABLE' : 'ATTENTION'}</span>
         </div>
         <div class="panel-body">
           <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
@@ -1842,6 +2252,98 @@ class AquaSyncApp {
             <div class="param-card">
               <div class="param-name">Uptime</div>
               <div class="param-val">${stp.uptime || '48h 10m'}</div>
+            </div>
+          </div>
+
+          <div style="margin-top:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;">
+            <div style="padding:10px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2);">
+              <div style="font-size:11px;color:var(--text-4);margin-bottom:4px;">Stage 1 · Screening</div>
+              <div style="font-size:13px;font-weight:700;">Inlet Flow Stabilized</div>
+              <div style="font-size:11px;color:var(--text-3);margin-top:4px;">Current load: ${inflow} MLD</div>
+            </div>
+            <div style="padding:10px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2);">
+              <div style="font-size:11px;color:var(--text-4);margin-bottom:4px;">Stage 2 · Primary Clarifier</div>
+              <div style="font-size:13px;font-weight:700;">Settling Performance</div>
+              <div style="font-size:11px;color:var(--text-3);margin-top:4px;">Utilization: ${utilization}%</div>
+            </div>
+            <div style="padding:10px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2);">
+              <div style="font-size:11px;color:var(--text-4);margin-bottom:4px;">Stage 3 · Aeration</div>
+              <div style="font-size:13px;font-weight:700;">Organic Load</div>
+              <div style="font-size:11px;color:var(--text-3);margin-top:4px;">BOD: ${stp.bod} mg/L</div>
+            </div>
+            <div style="padding:10px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2);">
+              <div style="font-size:11px;color:var(--text-4);margin-bottom:4px;">Stage 4 · Secondary Clarifier</div>
+              <div style="font-size:13px;font-weight:700;">Oxidation Status</div>
+              <div style="font-size:11px;color:var(--text-3);margin-top:4px;">COD: ${stp.cod} mg/L</div>
+            </div>
+            <div style="padding:10px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2);">
+              <div style="font-size:11px;color:var(--text-4);margin-bottom:4px;">Stage 5 · Disinfection</div>
+              <div style="font-size:13px;font-weight:700;">Discharge Readiness</div>
+              <div style="font-size:11px;color:var(--text-3);margin-top:4px;">Risk: ${stp.riskLevel || 'Low'}</div>
+            </div>
+            <div style="padding:10px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2);">
+              <div style="font-size:11px;color:var(--text-4);margin-bottom:4px;">Stage 6 · Sludge Handling</div>
+              <div style="font-size:13px;font-weight:700;">Estimated Daily Load</div>
+              <div style="font-size:11px;color:var(--text-3);margin-top:4px;">${sludgeLoad} kg/day</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title">Automated Recommendations Engine</div>
+            <span class="badge ${riskIsHigh ? 'badge-red' : 'badge-green'}">${riskIsHigh ? 'CRITICAL ACTIONS' : 'AUTO-STABLE'}</span>
+          </div>
+          <div class="panel-body" style="display:flex;flex-direction:column;gap:10px;">
+            <div style="padding:10px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2);font-size:12px;">
+              <strong>Next best action</strong><br/>
+              ${nextBestAction}
+            </div>
+            ${autoRecommendations.map((rec) => `
+              <div style="padding:10px;border:1px solid ${rec.severity === 'critical' ? 'rgba(220,38,38,0.35)' : 'rgba(5,150,105,0.35)'};border-radius:10px;background:${rec.severity === 'critical' ? 'rgba(254,242,242,0.8)' : 'rgba(236,253,245,0.8)'};font-size:12px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                  <strong style="color:${rec.severity === 'critical' ? 'var(--red)' : 'var(--green)'};">${rec.title}</strong>
+                  <span class="badge ${rec.severity === 'critical' ? 'badge-red' : 'badge-green'}" style="font-size:10px;">${rec.severity === 'critical' ? 'RED' : 'GREEN'}</span>
+                </div>
+                <div style="color:var(--text-2);line-height:1.5;">${rec.desc}</div>
+              </div>
+            `).join('')}
+            <div style="padding:10px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2);font-size:12px;">
+              <strong>Action execution log</strong><br/>
+              ${(automation.actionLog && automation.actionLog.length > 0)
+                ? automation.actionLog.slice(0, 3).map((entry) => `• ${entry}`).join('<br/>')
+                : '• No automation actions executed yet.'}
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title">Compliance Snapshot</div>
+            <span class="badge badge-green">LIVE</span>
+          </div>
+          <div class="panel-body" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div class="param-card">
+              <div class="param-name">Effluent Target</div>
+              <div class="param-val">BOD &lt; ${automation.targetBod}</div>
+            </div>
+            <div class="param-card">
+              <div class="param-name">Current BOD</div>
+              <div class="param-val" style="color:${bodCompliant ? 'var(--green)' : 'var(--red)'};">${stp.bod}</div>
+            </div>
+            <div class="param-card">
+              <div class="param-name">COD Limit</div>
+              <div class="param-val">&lt; ${automation.targetCod}</div>
+            </div>
+            <div class="param-card">
+              <div class="param-name">Current COD</div>
+              <div class="param-val" style="color:${codCompliant ? 'var(--green)' : 'var(--red)'};">${stp.cod}</div>
+            </div>
+            <div class="param-card" style="grid-column:1 / -1;">
+              <div class="param-name">Plant Verdict</div>
+              <div class="param-val" style="color:${efficiency > 90 ? 'var(--green)' : 'var(--amber)'};">${efficiency > 90 ? 'Compliant and stable' : 'Watch required'}</div>
             </div>
           </div>
         </div>

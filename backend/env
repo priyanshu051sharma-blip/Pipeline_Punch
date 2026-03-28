@@ -1,0 +1,4 @@
+PORT=3000
+NODE_ENV=development
+HARDWARE_ENABLED=false
+MONGODB_URI=mongodb://127.0.0.1:27017/water_dashboard
