@@ -45,6 +45,8 @@ backend/node_modules/
 frontend/node_modules/
 .vite/
 out/
+tmp_forecast_repo/
+gis/
 
 # Python
 __pycache__/
@@ -55,8 +57,30 @@ __pycache__/
 env/
 venv/
 .venv
+pip-log.txt
+pip-delete-this-directory.txt
+
+# ML & Data Science
+*.pkl
+*.pickle
+*.joblib
+demand_forecast_model.pkl
+forecast_report.json
+.ipynb_checkpoints/
+*.ipynb
+
+# Large files (if needed, comment out to track)
+# *.csv is commented to track training data
+# ML_TRAINING_DATASET.csv should be tracked
 
 # Misc
 .cache/
 *.pid
 .credentials
+*.db
+*.sqlite
+*.sqlite3
+
+# MacOS generated files
+.AppleDouble/
+.LSOverride/
