@@ -128,6 +128,93 @@ class AquaSyncApp {
     const hybridScore = Math.max(0, Math.min(100, Math.round((wqi * 0.6 + Math.max(0, (100 - turbidity * 10)) * 0.2 + Math.max(0, (100 - Math.max(0, tds - 100) / 5)) * 0.2))));
     const hybridLabel = hybridScore >= 75 ? 'Safe' : (hybridScore >= 55 ? 'Caution' : 'Unsafe');
     const riskOverall = outCount >= 3 ? 'High' : (outCount >= 1 ? 'Medium' : 'Low');
+    const fallbackConditions = [];
+
+    if (turbidity > 4 || chlorine < 0.2) {
+      fallbackConditions.push({
+        name: 'Microbial Gastroenteritis',
+        likelihood: turbidity > 6 || chlorine < 0.1 ? 'high' : 'medium',
+        trigger: 'High turbidity and/or low disinfectant residual',
+        diseases: ['Acute gastroenteritis', 'Cholera', 'Typhoid fever']
+      });
+    }
+
+    if (tds > 500) {
+      fallbackConditions.push({
+        name: 'Mineral/Salinity Stress',
+        likelihood: tds > 900 ? 'high' : 'medium',
+        trigger: 'Elevated dissolved solids',
+        diseases: ['Kidney stone risk', 'GI irritation in sensitive groups']
+      });
+    }
+
+    if (tds < 50) {
+      fallbackConditions.push({
+        name: 'Low Mineral Water Exposure',
+        likelihood: tds < 20 ? 'high' : 'medium',
+        trigger: 'Very low dissolved solids (TDS below potable range)',
+        diseases: ['Electrolyte imbalance symptoms', 'Hyponatremia risk (vulnerable groups)', 'Gastrointestinal discomfort']
+      });
+    }
+
+    if (ph < 6.5 || ph > 8.5) {
+      fallbackConditions.push({
+        name: 'pH Imbalance Exposure',
+        likelihood: ph < 6.0 || ph > 9.0 ? 'high' : 'medium',
+        trigger: 'pH out of acceptable range',
+        diseases: ['Skin irritation', 'Eye irritation', 'Gastric irritation']
+      });
+    }
+
+    if (temperature > 32 && chlorine < 0.3) {
+      fallbackConditions.push({
+        name: 'Warm Water Pathogen Growth',
+        likelihood: 'medium',
+        trigger: 'Warm water with low residual chlorine',
+        diseases: ['Legionella risk', 'Biofilm growth risk']
+      });
+    }
+
+    if (wqi < 70) {
+      fallbackConditions.push({
+        name: 'General Water Contamination',
+        likelihood: wqi < 50 ? 'high' : 'medium',
+        trigger: 'WQI below safe threshold',
+        diseases: ['Diarrhea', 'Dysentery', 'Hepatitis A', 'Typhoid fever']
+      });
+    }
+
+    if (ranges.some((r) => r.severity === 'high') && fallbackConditions.length === 0) {
+      fallbackConditions.push({
+        name: 'Parameter-Driven Contamination Risk',
+        likelihood: 'medium',
+        trigger: 'High-severity water quality deviation detected',
+        diseases: ['Acute gastroenteritis', 'Waterborne infection risk', 'Intestinal illness']
+      });
+    }
+
+    const fallbackRecommendations = [];
+    if (outCount > 0) {
+      fallbackRecommendations.push('Treat out-of-range parameters before potable use.');
+    }
+    if (turbidity > 4) {
+      fallbackRecommendations.push('Use coagulation + filtration to reduce turbidity below 4 NTU.');
+    }
+    if (chlorine < 0.2) {
+      fallbackRecommendations.push('Increase residual chlorine to 0.2-1.0 mg/L after contact time validation.');
+    }
+    if (tds > 500) {
+      fallbackRecommendations.push('Use RO or blending to reduce TDS for potable distribution.');
+    }
+    if (tds < 50) {
+      fallbackRecommendations.push('Validate TDS probe calibration and source blending; TDS below 50 ppm is atypical for potable water.');
+    }
+    if (wqi < 70) {
+      fallbackRecommendations.push('Treat and retest water quality index before domestic consumption.');
+    }
+    if (!fallbackRecommendations.length) {
+      fallbackRecommendations.push('No disease trigger detected for current ranges.');
+    }
 
     return {
       updatedAt: new Date().toISOString(),
@@ -149,8 +236,8 @@ class AquaSyncApp {
       },
       diseaseRisk: {
         overall: riskOverall,
-        conditions: [],
-        recommendations: outCount > 0 ? ['Treat out-of-range parameters before potable use.'] : ['No disease trigger detected for current ranges.']
+        conditions: fallbackConditions,
+        recommendations: fallbackRecommendations
       }
     };
   }

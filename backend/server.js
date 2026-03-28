@@ -840,13 +840,23 @@ function computeDiseaseRisk(readings, ranges) {
     });
   }
 
+  if (readings.tds < 50) {
+    const likelihood = readings.tds < 20 ? 'high' : 'medium';
+    conditions.push({
+      name: 'Low Mineral Water Exposure',
+      likelihood,
+      trigger: 'Very low dissolved solids (TDS below potable range)',
+      diseases: ['Electrolyte imbalance symptoms', 'Hyponatremia risk (vulnerable groups)', 'Gastrointestinal discomfort']
+    });
+  }
+
   if (readings.ph < 6.5 || readings.ph > 8.5) {
     const likelihood = readings.ph < 6.0 || readings.ph > 9.0 ? 'high' : 'medium';
     conditions.push({
       name: 'pH Imbalance Exposure',
       likelihood,
       trigger: 'pH out of acceptable range',
-      diseases: ['Skin irritation', 'Eye irritation']
+      diseases: ['Skin irritation', 'Eye irritation', 'Gastric irritation']
     });
   }
 
@@ -856,6 +866,25 @@ function computeDiseaseRisk(readings, ranges) {
       likelihood: 'medium',
       trigger: 'Warm water with low residual chlorine',
       diseases: ['Legionella risk', 'Biofilm growth risk']
+    });
+  }
+
+  if (readings.wqi < 70) {
+    const likelihood = readings.wqi < 50 ? 'high' : 'medium';
+    conditions.push({
+      name: 'General Water Contamination',
+      likelihood,
+      trigger: 'WQI below safe threshold',
+      diseases: ['Diarrhea', 'Dysentery', 'Hepatitis A', 'Typhoid fever']
+    });
+  }
+
+  if (ranges.some((r) => r.severity === 'high') && conditions.length === 0) {
+    conditions.push({
+      name: 'Parameter-Driven Contamination Risk',
+      likelihood: 'medium',
+      trigger: 'High-severity water quality deviation detected',
+      diseases: ['Acute gastroenteritis', 'Waterborne infection risk', 'Intestinal illness']
     });
   }
 
@@ -874,6 +903,12 @@ function computeDiseaseRisk(readings, ranges) {
   }
   if (readings.tds > 500) {
     recommendations.push('Use RO or blending to reduce TDS for potable distribution.');
+  }
+  if (readings.tds < 50) {
+    recommendations.push('Validate TDS probe calibration and source blending; TDS below 50 ppm is atypical for potable water.');
+  }
+  if (readings.wqi < 70) {
+    recommendations.push('Treat and retest water quality index before domestic consumption.');
   }
   if (conditions.length === 0) {
     recommendations.push('No immediate disease trigger detected. Continue routine monitoring.');
