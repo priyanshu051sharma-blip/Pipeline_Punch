@@ -6,6 +6,8 @@ class AquaSyncApp {
     this.data = null;
     this.currentTab = 'overview';
     this.charts = {};
+    this.uiPrefs = this.loadUIPreferences();
+    this.shouldAnimateNextRender = true;
     this.dismissedCriticalLeakIds = this.loadDismissedCriticalLeakIds();
     this.stpAutomation = {
       mode: 'auto',
@@ -56,6 +58,7 @@ class AquaSyncApp {
 
   async init() {
     this.setupEventListeners();
+    this.applyUIPreferences();
     this.startClock();
     this.setAIChatVisibility(false);
     this.startSTPAutoPilot();
@@ -92,6 +95,112 @@ class AquaSyncApp {
         this.switchTab(tab);
       });
     });
+
+    const comfortBtn = document.getElementById('density-comfort');
+    const compactBtn = document.getElementById('density-compact');
+    const zenBtn = document.getElementById('zen-toggle');
+    const themeBtn = document.getElementById('theme-toggle');
+
+    if (comfortBtn) {
+      comfortBtn.addEventListener('click', () => this.setDensityMode('comfort'));
+    }
+
+    if (compactBtn) {
+      compactBtn.addEventListener('click', () => this.setDensityMode('compact'));
+    }
+
+    if (zenBtn) {
+      zenBtn.addEventListener('click', () => this.toggleZenMode());
+    }
+
+    if (themeBtn) {
+      themeBtn.addEventListener('click', () => this.toggleTheme());
+    }
+  }
+
+  loadUIPreferences() {
+    try {
+      const raw = localStorage.getItem('aquasync.uiPrefs');
+      if (!raw) {
+        return { density: 'comfort', zenMode: false, theme: 'light' };
+      }
+      const parsed = JSON.parse(raw);
+      return {
+        density: parsed?.density === 'compact' ? 'compact' : 'comfort',
+        zenMode: !!parsed?.zenMode,
+        theme: parsed?.theme === 'dark' ? 'dark' : 'light'
+      };
+    } catch (error) {
+      return { density: 'comfort', zenMode: false, theme: 'light' };
+    }
+  }
+
+  saveUIPreferences() {
+    try {
+      localStorage.setItem('aquasync.uiPrefs', JSON.stringify(this.uiPrefs));
+    } catch (error) {
+      // Ignore local storage write issues.
+    }
+  }
+
+  applyUIPreferences() {
+    this.applyDensityMode(this.uiPrefs.density);
+    this.applyZenMode(this.uiPrefs.zenMode);
+    this.applyTheme(this.uiPrefs.theme);
+  }
+
+  setDensityMode(mode) {
+    this.uiPrefs.density = mode === 'compact' ? 'compact' : 'comfort';
+    this.applyDensityMode(this.uiPrefs.density);
+    this.saveUIPreferences();
+  }
+
+  applyDensityMode(mode) {
+    const comfortBtn = document.getElementById('density-comfort');
+    const compactBtn = document.getElementById('density-compact');
+
+    document.body.classList.toggle('density-compact', mode === 'compact');
+
+    if (comfortBtn) comfortBtn.classList.toggle('active', mode !== 'compact');
+    if (compactBtn) compactBtn.classList.toggle('active', mode === 'compact');
+  }
+
+  toggleZenMode() {
+    this.uiPrefs.zenMode = !this.uiPrefs.zenMode;
+    this.applyZenMode(this.uiPrefs.zenMode);
+    this.saveUIPreferences();
+  }
+
+  applyZenMode(enabled) {
+    const zenBtn = document.getElementById('zen-toggle');
+    document.body.classList.toggle('zen-mode', !!enabled);
+
+    if (zenBtn) {
+      zenBtn.classList.toggle('active', !!enabled);
+      zenBtn.innerHTML = enabled
+        ? '<svg width="13" height="13" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg> Exit Focus'
+        : '<svg width="13" height="13" viewBox="0 0 24 24"><path d="M12 3v18M3 12h18"/></svg> Focus';
+    }
+  }
+
+  toggleTheme() {
+    this.uiPrefs.theme = this.uiPrefs.theme === 'dark' ? 'light' : 'dark';
+    this.applyTheme(this.uiPrefs.theme);
+    this.saveUIPreferences();
+  }
+
+  applyTheme(theme) {
+    const themeBtn = document.getElementById('theme-toggle');
+    const isDark = theme === 'dark';
+
+    document.body.classList.toggle('theme-dark', isDark);
+
+    if (themeBtn) {
+      themeBtn.classList.toggle('active', isDark);
+      themeBtn.innerHTML = isDark
+        ? '<svg width="13" height="13" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><path d="M12 1v2m0 18v2m11-11h-2M3 12H1m18.36 7.78-1.42-1.42M6.34 6.34 4.92 4.92m14.14 0-1.42 1.42M6.34 17.66l-1.42 1.42"/></svg> Light'
+        : '<svg width="13" height="13" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg> Dark';
+    }
   }
 
   startClock() {
@@ -106,6 +215,27 @@ class AquaSyncApp {
   formatNumber(num, decimals = 2) {
     if (typeof num !== 'number') return num;
     return parseFloat(num.toFixed(decimals));
+  }
+
+  formatIrrigationDuration(durationMinutes) {
+    const value = Number(durationMinutes);
+    if (!Number.isFinite(value) || value <= 0) return '0m';
+
+    const totalSeconds = Math.round(value * 60);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+
+    // Dynamic formatting: show only relevant units for cleaner UI.
+    if (hours > 0) {
+      return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+    }
+
+    if (minutes > 0) {
+      return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`;
+    }
+
+    return `${seconds}s`;
   }
 
   buildPotabilityFallbackFromWaterQuality(waterQuality = {}) {
@@ -1235,6 +1365,7 @@ class AquaSyncApp {
 
   switchTab(tab) {
     this.currentTab = tab;
+    this.shouldAnimateNextRender = true;
     const titles = {
       overview: 'System Overview',
       quality: 'Water Quality',
@@ -1319,6 +1450,25 @@ class AquaSyncApp {
     } else if (this.currentTab === 'forecast') {
       this.renderForecastCharts();
     }
+
+    if (this.shouldAnimateNextRender) {
+      this.applyRenderEnhancements();
+      this.shouldAnimateNextRender = false;
+    }
+  }
+
+  applyRenderEnhancements() {
+    const container = document.getElementById('app-content');
+    if (!container) return;
+
+    const animatedNodes = container.querySelectorAll('.kpi, .panel, .leak-item, .param-card');
+    animatedNodes.forEach((node, idx) => {
+      node.classList.remove('enter-stagger');
+      // Trigger reflow to replay animation only on tab switches.
+      void node.offsetWidth;
+      node.classList.add('enter-stagger');
+      node.style.animationDelay = `${Math.min(idx * 45, 260)}ms`;
+    });
   }
 
   renderAlerts() {
@@ -2268,7 +2418,7 @@ class AquaSyncApp {
                   </div>
                   <div class="irr-stat">
                     <span class="stat-label">Duration</span>
-                    <span class="stat-value">${zone.duration}</span>
+                    <span class="stat-value">${this.formatIrrigationDuration(zone.duration)}</span>
                   </div>
                 </div>
                 <div class="irr-last">Last watered: ${zone.lastWatered}</div>

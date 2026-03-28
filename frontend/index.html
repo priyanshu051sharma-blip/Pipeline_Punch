@@ -99,6 +99,18 @@
         <span class="badge badge-green">● LIVE MONITORING</span>
       </div>
       <div class="tb-right">
+        <div class="view-controls" role="group" aria-label="View density controls">
+          <button class="view-chip active" id="density-comfort" title="Comfort view">Comfort</button>
+          <button class="view-chip" id="density-compact" title="Compact view">Compact</button>
+        </div>
+        <button class="btn btn-ghost" id="zen-toggle" title="Toggle focus mode">
+          <svg width="13" height="13" viewBox="0 0 24 24"><path d="M12 3v18M3 12h18"/></svg>
+          Focus
+        </button>
+        <button class="btn btn-ghost" id="theme-toggle" title="Toggle dark mode">
+          <svg width="13" height="13" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+          Dark
+        </button>
         <div class="time-chip" id="clock">--:--:--</div>
         <button class="btn btn-ghost" onclick="app.refreshData()">
           <svg width="13" height="13" viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.37"/></svg>
