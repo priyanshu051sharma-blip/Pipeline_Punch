@@ -1,8 +1,4 @@
 {
   "buildCommand": "npm run build",
-  "outputDirectory": "dist",
-  "env": {
-    "VITE_API_URL": "@api_url",
-    "VITE_WS_URL": "@ws_url"
-  }
+  "outputDirectory": "dist"
 }

@@ -1396,16 +1396,6 @@ async function connectToDatabase() {
 }
 
 // API Routes
-app.get('/api/health', (req, res) => {
-  res.json({
-    status: 'ok',
-    timestamp: new Date().toISOString(),
-    database: dbConnected ? 'connected' : 'disconnected',
-    thingspeak: thingspeakStatus.live ? 'live' : (THINGSPEAK_ENABLED ? 'enabled-not-live' : 'disabled')
-  });
-});
-
-app.get('/api/database/status', (req, res) => {
   res.json({
     database: dbConnected ? 'connected' : 'disconnected',
     mongoReadyState: mongoose.connection.readyState,

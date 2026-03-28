@@ -3,18 +3,18 @@ services:
     name: aquasync-backend
     runtime: node
     plan: free
-    buildCommand: cd backend && npm install
-    startCommand: cd backend && npm start
+    buildCommand: "cd backend && npm install"
+    startCommand: "cd backend && npm start"
     envVars:
       - key: NODE_ENV
         value: production
       - key: PORT
-        value: 3000
+        value: "3000"
       - key: MONGODB_URI
+        scope: all
+      - key: CORS_ORIGIN
         scope: all
       - key: THINGSPEAK_ENABLED
         value: "false"
       - key: HARDWARE_ENABLED
         value: "false"
-      - key: CORS_ORIGIN
-        value: "https://aquasync-dashboard.vercel.app"
