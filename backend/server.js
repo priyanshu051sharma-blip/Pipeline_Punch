@@ -14,11 +14,14 @@ require('dotenv').config({ path: path.join(__dirname, 'env') });
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Configure CORS for both local and production environments
-const allowedOrigins = (process.env.CORS_ORIGINS || process.env.CORS_ORIGIN || 'http://localhost:5173')
+// Configure CORS for both local and production environments.
+// Keep safe defaults so the deployed Vercel app works even if env vars are stale.
+const defaultOrigins = ['http://localhost:5173', 'https://water-dashboard-steel.vercel.app'];
+const configuredOrigins = (process.env.CORS_ORIGINS || process.env.CORS_ORIGIN || '')
   .split(',')
   .map((origin) => origin.trim())
   .filter(Boolean);
+const allowedOrigins = [...new Set([...defaultOrigins, ...configuredOrigins])];
 
 app.use(cors({
   origin: (origin, callback) => {
