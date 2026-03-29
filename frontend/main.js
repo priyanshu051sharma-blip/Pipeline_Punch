@@ -1,6 +1,6 @@
 // Environment-driven API URLs for localhost and production
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
-const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:3000';
+const API_URL = import.meta.env.VITE_API_URL || '/api';
+const WS_URL = import.meta.env.VITE_WS_URL || (window.location.protocol === 'https:' ? 'wss://aquasync-backend.onrender.com' : 'ws://localhost:3000');
 let ws = null;
 
 class AquaSyncApp {

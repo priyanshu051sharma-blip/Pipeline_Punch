@@ -48,7 +48,7 @@ class AquaSyncApp {
 
   async fetchInitialData() {
     try {
-      const response = await fetch('http://localhost:3000/api/dashboard');
+      const response = await fetch('/api/dashboard');
       this.data = await response.json();
       this.render();
     } catch (error) {
@@ -57,7 +57,8 @@ class AquaSyncApp {
   }
 
   connectWebSocket() {
-    this.ws = new WebSocket('ws://localhost:3000');
+    const wsUrl = window.location.protocol === 'https:' ? 'wss://aquasync-backend.onrender.com' : 'ws://localhost:3000';
+    this.ws = new WebSocket(wsUrl);
     
     this.ws.onopen = () => {
       console.log('WebSocket connected');
