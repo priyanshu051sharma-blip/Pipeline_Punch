@@ -1408,6 +1408,7 @@ async function connectToDatabase() {
 }
 
 // API Routes
+app.get('/api/status', (req, res) => {
   res.json({
     database: dbConnected ? 'connected' : 'disconnected',
     mongoReadyState: mongoose.connection.readyState,
