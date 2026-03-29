@@ -1056,6 +1056,16 @@ class AquaSyncApp {
     }
   }
 
+  async parseApiResponse(res) {
+    const text = await res.text();
+    if (!text) return {};
+    try {
+      return JSON.parse(text);
+    } catch {
+      return { message: text };
+    }
+  }
+
   async dispatchLeakTeam(leak) {
     if (!leak) return;
     try {
@@ -1070,19 +1080,25 @@ class AquaSyncApp {
           confidence: leak.confidence
         })
       });
-      const payload = await res.json();
+      const payload = await this.parseApiResponse(res);
+      if (!res.ok || !payload?.success || !payload?.job?.jobId) {
+        throw new Error(payload?.message || `Dispatch request failed (HTTP ${res.status})`);
+      }
       alert(`✓ Dispatch Job: ${payload.job.jobId}\n\n${payload.message}\n\nAdmin notified. Plumbers assigned shortly.\n\nEstimated arrival: ${payload.job.estimatedArrivalTime}`);
       console.log('Dispatch job created:', payload.job);
     } catch (error) {
       console.error('Dispatch failed:', error);
-      alert('Dispatch failed; see console.');
+      alert(`Dispatch failed: ${error.message}`);
     }
   }
 
   async getDispatchJobs() {
     try {
       const res = await fetch(`${API_URL}/dispatch/jobs`);
-      const jobs = await res.json();
+      const jobs = await this.parseApiResponse(res);
+      if (!res.ok) {
+        throw new Error(jobs?.message || `Failed to load jobs (HTTP ${res.status})`);
+      }
       console.log('Current dispatch jobs:', jobs);
       return jobs;
     } catch (error) {
@@ -1119,17 +1135,21 @@ class AquaSyncApp {
             confidence: leak.confidence
           })
         });
-        const payload = await res.json();
-        if (payload.success) {
+        const payload = await this.parseApiResponse(res);
+        if (res.ok && payload?.success && payload?.job?.jobId) {
           dispatchedCount++;
           dispatchedJobs.push(payload.job.jobId);
+        } else {
+          console.error(`Dispatch API rejected leak ${leak.id}:`, payload);
         }
       } catch (error) {
         console.error(`Failed to dispatch leak ${leak.id}:`, error);
       }
     }
 
-    alert(`✓ Dispatched ${dispatchedCount}/${criticalLeaks.length} critical leaks\n\nJobs: ${dispatchedJobs.join(', ')}\n\nAdmin notified for plumber assignment. Repair teams en route.`);
+    const failedCount = criticalLeaks.length - dispatchedCount;
+    const jobsSummary = dispatchedJobs.length ? dispatchedJobs.join(', ') : 'None';
+    alert(`✓ Dispatched ${dispatchedCount}/${criticalLeaks.length} critical leaks\n\nJobs: ${jobsSummary}\n\nFailed: ${failedCount}\n\nAdmin notified for plumber assignment. Repair teams en route.`);
     console.log('Dispatched jobs:', dispatchedJobs);
   }
 
