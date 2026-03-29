@@ -3476,11 +3476,6 @@ class AquaSyncApp {
 
   renderThresholds() {
     const { thresholds } = this.data;
-    const ml = this.data?.waterPotability?.ml || {};
-    const featureImportances = ml.featureImportances || {};
-    const topFeatures = Object.entries(featureImportances)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 3);
     
     return `
       <div class="panel">
@@ -3527,81 +3522,6 @@ class AquaSyncApp {
             <button class="btn btn-ghost" onclick="location.reload()">↺ Reset to Defaults</button>
           </div>
 
-          <div class="panel" style="margin-top:16px;">
-            <div class="panel-header" style="align-items:flex-start;">
-              <div>
-                <div class="panel-title">🧠 Potability Training (Mamdani + Random Forest)</div>
-                <div style="font-size:12px;color:var(--text-3);margin-top:4px;line-height:1.5;">
-                  Fuzzy Mamdani logic remains rule-based and always active. This action retrains the Random Forest layer from <code>backend/data/water_potability.csv</code>.
-                </div>
-              </div>
-              <span class="badge badge-blue">CSV MODE</span>
-            </div>
-            <div class="panel-body" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;">
-              <div>
-                <div style="font-size:11px;color:var(--text-3);margin-bottom:4px;">Trees</div>
-                <input id="rf-trees" type="number" min="10" max="120" value="60" class="threshold-input" />
-              </div>
-              <div>
-                <div style="font-size:11px;color:var(--text-3);margin-bottom:4px;">Max Depth</div>
-                <input id="rf-depth" type="number" min="2" max="14" value="8" class="threshold-input" />
-              </div>
-              <div>
-                <div style="font-size:11px;color:var(--text-3);margin-bottom:4px;">Min Leaf</div>
-                <input id="rf-min-leaf" type="number" min="1" max="25" value="4" class="threshold-input" />
-              </div>
-              <div>
-                <div style="font-size:11px;color:var(--text-3);margin-bottom:4px;">Sample Rate</div>
-                <input id="rf-sample-rate" type="number" min="0.4" max="1" step="0.05" value="0.85" class="threshold-input" />
-              </div>
-              <div>
-                <div style="font-size:11px;color:var(--text-3);margin-bottom:4px;">Max Features</div>
-                <input id="rf-max-features" type="number" min="1" max="6" value="3" class="threshold-input" />
-              </div>
-            </div>
-            <div class="threshold-actions" style="margin-top:10px;">
-              <button class="btn btn-primary" onclick="app.trainPotabilityFromCsv()">🚀 Train Potability Model from CSV</button>
-            </div>
-
-            <div style="margin-top:12px;padding:10px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2);">
-              <div style="font-size:12px;font-weight:700;margin-bottom:8px;color:var(--text-2);">Model Training Status (visible dashboard data)</div>
-              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;">
-                <div class="param-card">
-                  <div class="param-name">Model</div>
-                  <div class="param-val">${ml.modelType || 'RandomForest'}</div>
-                </div>
-                <div class="param-card">
-                  <div class="param-name">Training Source</div>
-                  <div class="param-val">${ml.trainSource || 'Not trained yet'}</div>
-                </div>
-                <div class="param-card">
-                  <div class="param-name">Samples</div>
-                  <div class="param-val">${ml.samples ?? '--'}</div>
-                </div>
-                <div class="param-card">
-                  <div class="param-name">Accuracy</div>
-                  <div class="param-val">${ml.accuracy ?? '--'}${ml.accuracy ? '%' : ''}</div>
-                </div>
-                <div class="param-card">
-                  <div class="param-name">Trained At</div>
-                  <div class="param-val" style="font-size:12px;">${ml.trainedAt ? new Date(ml.trainedAt).toLocaleString() : 'Not trained'}</div>
-                </div>
-                <div class="param-card">
-                  <div class="param-name">CSV Path</div>
-                  <div class="param-val" style="font-size:12px;word-break:break-word;">${ml.csvPath || 'backend/data/water_potability.csv'}</div>
-                </div>
-              </div>
-              <div style="margin-top:8px;font-size:11px;color:var(--text-3);line-height:1.6;">
-                RF Params: trees=${ml.trees ?? '--'}, depth=${ml.maxDepth ?? '--'}, minLeaf=${ml.minLeaf ?? '--'}, sampleRate=${ml.sampleRate ?? '--'}, maxFeatures=${ml.maxFeatures ?? '--'}
-              </div>
-              <div style="margin-top:6px;font-size:11px;color:var(--text-3);line-height:1.6;">
-                Top Feature Importances:
-                ${topFeatures.length
-                  ? topFeatures.map(([name, value]) => `${name}=${(value * 100).toFixed(1)}%`).join(' | ')
-                  : 'Not available yet'}
-              </div>
-            </div>
-          </div>
         </div>
       </div>
 
