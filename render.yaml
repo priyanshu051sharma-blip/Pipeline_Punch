@@ -12,7 +12,7 @@ services:
         value: "3000"
       - key: MONGODB_URI
         scope: all
-      - key: CORS_ORIGIN
+      - key: CORS_ORIGINS
         scope: all
       - key: THINGSPEAK_ENABLED
         value: "false"
